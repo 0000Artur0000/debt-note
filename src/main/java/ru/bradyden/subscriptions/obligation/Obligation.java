@@ -1,6 +1,8 @@
 package ru.bradyden.subscriptions.obligation;
 import jakarta.persistence.Entity;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import static jakarta.persistence.EnumType.STRING;
 import java.math.BigDecimal;
 import java.util.UUID;
 import lombok.Getter;
@@ -13,4 +15,10 @@ public class Obligation {
     private String nazvanie;
     private BigDecimal summa;
     private String valuta;
+    @Enumerated(STRING)
+    private Category kategoriya;
+    @Enumerated(STRING)
+    private Status status;
+    @Enumerated(STRING)
+    private Recurrence periodichnost;
 }
