@@ -4,6 +4,8 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import static jakarta.persistence.EnumType.STRING;
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.Setter;
@@ -21,4 +23,7 @@ public class Obligation {
     private Status status;
     @Enumerated(STRING)
     private Recurrence periodichnost;
+    private LocalDate dataSledPlatezha;
+    private Instant sozdano;
+    private Instant obnovleno;
 }
