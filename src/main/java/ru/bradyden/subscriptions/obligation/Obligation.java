@@ -9,4 +9,5 @@ import lombok.Setter;
 public class Obligation {
     @Id
     private UUID id;
+    private String nazvanie;
 }
