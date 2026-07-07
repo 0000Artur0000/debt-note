@@ -1,7 +1,9 @@
 package ru.bradyden.subscriptions.obligation;
 import ru.bradyden.subscriptions.obligation.dto.CreateObligationRequest;
 import ru.bradyden.subscriptions.obligation.dto.CreateObligationResult;
+import ru.bradyden.subscriptions.obligation.dto.UpcomingResult;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
@@ -23,5 +25,10 @@ public class ObligationController {
             @RequestParam(required = false) Category kategoriya,
             @RequestParam(required = false) Status status) {
         return servis.poluchitSpisok(kategoriya, status);
+    }
+    @GetMapping("/upcoming")
+    public UpcomingResult blizhayshie(@RequestParam(defaultValue = "7")
+            @Min(0) int days) {
+        throw new UnsupportedOperationException("v protsesse");
     }
 }
