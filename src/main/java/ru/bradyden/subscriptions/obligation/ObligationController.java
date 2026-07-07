@@ -22,6 +22,6 @@ public class ObligationController {
     public List<Obligation> spisok(
             @RequestParam(required = false) Category kategoriya,
             @RequestParam(required = false) Status status) {
-        throw new UnsupportedOperationException("pokachto net");
+        return servis.poluchitSpisok(kategoriya, status);
     }
 }
