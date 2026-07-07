@@ -14,6 +14,8 @@ public class ObligationService {
     }
     public CreateObligationResult sozdat(CreateObligationRequest zapros) {
         var segodnya = LocalDate.now(chasy);
+        var dublikat = repo.existsByNazvanieIgnoreCaseAndStatus(
+            zapros.nazvanie(), Status.ACTIVE);
         var o = new Obligation();
         o.setNazvanie(zapros.nazvanie());
         o.setSumma(zapros.summa());
@@ -24,6 +26,8 @@ public class ObligationService {
         o.setStatus(zapros.dataSledPlatezha().isBefore(segodnya)
             ? Status.EXPIRED : Status.ACTIVE);
         repo.save(o);
-        return new CreateObligationResult(o, null);
+        var preduprezhdenie = dublikat
+            ? "Objazatelstvo s takim nazvaniem uzhe est" : null;
+        return new CreateObligationResult(o, preduprezhdenie);
     }
 }
