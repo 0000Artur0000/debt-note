@@ -4,7 +4,9 @@ import ru.bradyden.subscriptions.obligation.dto.CreateObligationResult;
 import org.springframework.data.domain.Example;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 @Service
@@ -33,7 +35,12 @@ public class ObligationService {
             ? "Objazatelstvo s takim nazvaniem uzhe est" : null;
         return new CreateObligationResult(o, preduprezhdenie);
     }
+    @Transactional
     public List<Obligation> poluchitSpisok(Category kategoriya, Status status) {
+        var segodnya = LocalDate.now(chasy);
+        var seychas = Instant.now(chasy);
+        repo.pogasitProsrochennye(Status.ACTIVE, Status.EXPIRED,
+            segodnya, seychas);
         var proba = Obligation.builder()
             .kategoriya(kategoriya)
             .status(status)
