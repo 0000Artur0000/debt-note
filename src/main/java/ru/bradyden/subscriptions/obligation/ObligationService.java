@@ -1,9 +1,12 @@
 package ru.bradyden.subscriptions.obligation;
 import ru.bradyden.subscriptions.obligation.dto.CreateObligationRequest;
 import ru.bradyden.subscriptions.obligation.dto.CreateObligationResult;
+import org.springframework.data.domain.Example;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.List;
 @Service
 public class ObligationService {
     private final ObligationRepository repo;
@@ -29,5 +32,8 @@ public class ObligationService {
         var preduprezhdenie = dublikat
             ? "Objazatelstvo s takim nazvaniem uzhe est" : null;
         return new CreateObligationResult(o, preduprezhdenie);
+    }
+    public List<Obligation> poluchitSpisok(Category kategoriya, Status status) {
+        return List.of();
     }
 }
