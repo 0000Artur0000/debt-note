@@ -34,6 +34,11 @@ public class ObligationService {
         return new CreateObligationResult(o, preduprezhdenie);
     }
     public List<Obligation> poluchitSpisok(Category kategoriya, Status status) {
-        return List.of();
+        var proba = Obligation.builder()
+            .kategoriya(kategoriya)
+            .status(status)
+            .build();
+        return repo.findAll(Example.of(proba),
+            Sort.by("dataSledPlatezha"));
     }
 }
