@@ -1,14 +1,15 @@
 package ru.bradyden.subscriptions.obligation;
-import ru.bradyden.subscriptions.obligation.dto.CreateObligationRequest;
-import ru.bradyden.subscriptions.obligation.dto.CreateObligationResult;
+import ru.bradyden.subscriptions.obligation.dto.*;
 import org.springframework.data.domain.Example;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import static java.util.stream.Collectors.*;
 @Service
 public class ObligationService {
     private final ObligationRepository repo;
@@ -47,5 +48,21 @@ public class ObligationService {
             .build();
         return repo.findAll(Example.of(proba),
             Sort.by("dataSledPlatezha"));
+    }
+    public UpcomingResult blizhayshie(int dney) {
+        var segodnya = LocalDate.now(chasy);
+        var okno = repo.findByDataSledPlatezhaBetweenOrderByDataSledPlatezhaAsc(
+            segodnya, segodnya.plusDays(dney));
+        return okno.stream().collect(teeing(
+            toMap(Obligation::getValuta, Obligation::getSumma, BigDecimal::add),
+            filtering((Obligation o) ->
+                o.getKategoriya() == Category.SUBSCRIPTION
+                    && o.getPeriodichnost() != null,
+                mapping(o -> new UpcomingResult.RenewalAlert(
+                    o.getId(), o.getNazvanie(), o.getSumma(),
+                    o.getValuta(), o.getDataSledPlatezha(),
+                    o.getPeriodichnost().name().toLowerCase())),
+                toList()),
+            (totals, alerts) -> new UpcomingResult(okno, totals, alerts)));
     }
 }
