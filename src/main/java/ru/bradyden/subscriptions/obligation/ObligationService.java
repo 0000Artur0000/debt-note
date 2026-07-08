@@ -1,6 +1,7 @@
 package ru.bradyden.subscriptions.obligation;
 import ru.bradyden.subscriptions.obligation.dto.*;
 import ru.bradyden.subscriptions.payment.Payment;
+import ru.bradyden.subscriptions.sse.SseBroadcaster;
 import jakarta.persistence.EntityManager;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
@@ -11,8 +12,11 @@ import java.util.*;
 import static java.util.stream.Collectors.*;
 @Service
 public class ObligationService {
-    private final ObligationRepository repo; private final EntityManager em; private final Clock chasy;
-    public ObligationService(ObligationRepository r, EntityManager e, Clock c) { repo=r; em=e; chasy=c; }
+    private final ObligationRepository repo; private final EntityManager em;
+    private final Clock chasy; private final SseBroadcaster sse;
+    public ObligationService(ObligationRepository r, EntityManager e, Clock c, SseBroadcaster s) {
+        repo=r; em=e; chasy=c; sse=s;
+    }
     public CreateObligationResult sozdat(CreateObligationRequest z) {
         var t = LocalDate.now(chasy);
         var dub = repo.existsByNazvanieIgnoreCaseAndStatus(z.nazvanie(), Status.ACTIVE);
@@ -58,5 +62,11 @@ public class ObligationService {
         var o = repo.findById(id).orElseThrow();
         if (o.getStatus()!=Status.ACTIVE) throw new IllegalArgumentException("otmena tolko dlya aktivnyh");
         o.setStatus(Status.CANCELLED);
+    }
+    @Transactional
+    public void udalit(UUID id) {
+        if (!repo.existsById(id)) throw new IllegalArgumentException("ne naydeno");
+        repo.deleteById(id);
+        sse.rasslat(new ObligationDeleted(id));
     }
 }
