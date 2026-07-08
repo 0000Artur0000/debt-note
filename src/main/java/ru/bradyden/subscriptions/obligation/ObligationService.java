@@ -1,5 +1,7 @@
 package ru.bradyden.subscriptions.obligation;
 import ru.bradyden.subscriptions.obligation.dto.*;
+import ru.bradyden.subscriptions.payment.Payment;
+import jakarta.persistence.EntityManager;
 import org.springframework.data.domain.Example;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -14,9 +16,12 @@ import static java.util.stream.Collectors.*;
 @Service
 public class ObligationService {
     private final ObligationRepository repo;
+    private final EntityManager em;
     private final Clock chasy;
-    public ObligationService(ObligationRepository repo, Clock chasy) {
+    public ObligationService(ObligationRepository repo, EntityManager em,
+                             Clock chasy) {
         this.repo = repo;
+        this.em = em;
         this.chasy = chasy;
     }
     public CreateObligationResult sozdat(CreateObligationRequest zapros) {
@@ -66,7 +71,12 @@ public class ObligationService {
                 toList()),
             (totals, alerts) -> new UpcomingResult(okno, totals, alerts)));
     }
+    @Transactional
     public PayResult oplatit(UUID id) {
-        throw new UnsupportedOperationException("ne gotovo");
+        var o = repo.findById(id).orElseThrow();
+        if (o.getStatus() != Status.ACTIVE) {
+            throw new IllegalArgumentException("oplata tolko dlya aktivnyh");
+        }
+        return null;
     }
 }
