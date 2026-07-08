@@ -1,7 +1,5 @@
 package ru.bradyden.subscriptions.obligation;
-import ru.bradyden.subscriptions.obligation.dto.CreateObligationRequest;
-import ru.bradyden.subscriptions.obligation.dto.CreateObligationResult;
-import ru.bradyden.subscriptions.obligation.dto.UpcomingResult;
+import ru.bradyden.subscriptions.obligation.dto.*;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import org.springframework.http.HttpStatus;
@@ -29,6 +27,6 @@ public class ObligationController {
     @GetMapping("/upcoming")
     public UpcomingResult blizhayshie(@RequestParam(defaultValue = "7")
             @Min(0) int days) {
-        throw new UnsupportedOperationException("v protsesse");
+        return servis.blizhayshie(days);
     }
 }
