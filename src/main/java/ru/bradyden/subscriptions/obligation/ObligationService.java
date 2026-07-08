@@ -9,6 +9,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 import static java.util.stream.Collectors.*;
 @Service
 public class ObligationService {
@@ -64,5 +65,8 @@ public class ObligationService {
                     o.getPeriodichnost().name().toLowerCase())),
                 toList()),
             (totals, alerts) -> new UpcomingResult(okno, totals, alerts)));
+    }
+    public PayResult oplatit(UUID id) {
+        throw new UnsupportedOperationException("ne gotovo");
     }
 }
