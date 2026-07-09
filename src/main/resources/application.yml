@@ -1,0 +1,19 @@
+spring:
+  application.name: subscriptions
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+    default-property-inclusion: non_null
+    datatype.enum.write-enums-to-lowercase: true
+    mapper.accept-case-insensitive-enums: true
+  mvc.problemdetails.enabled: true
+  threads.virtual.enabled: true
+  datasource:
+    url: jdbc:postgresql://localhost:5432/subscriptions
+    username: user
+    password: pass
+  jpa.hibernate.ddl-auto: validate
+  docker.compose:
+    enabled: false
+    file: compose.yaml
+springdoc:
+  swagger-ui.path: /docs
