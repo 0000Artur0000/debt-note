@@ -4,8 +4,10 @@ import ru.bradyden.subscriptions.payment.Payment;
 import ru.bradyden.subscriptions.sse.SseBroadcaster;
 import jakarta.persistence.EntityManager;
 import org.springframework.data.domain.*;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.time.*;
 import java.util.*;
@@ -48,8 +50,8 @@ public class ObligationService {
     }
     @Transactional
     public PayResult oplatit(UUID id) {
-        var o = repo.findById(id).orElseThrow();
-        if (o.getStatus()!=Status.ACTIVE) throw new IllegalArgumentException("oplata tolko dlya aktivnyh");
+        var o = najti(id);
+        trebovatAktivny(o);
         var p = Payment.builder().obligationId(o.getId()).amount(o.getAmount())
             .currency(o.getCurrency()).paidAt(Instant.now(chasy)).build();
         em.persist(p);
@@ -59,14 +61,26 @@ public class ObligationService {
     }
     @Transactional
     public void otmenit(UUID id) {
-        var o = repo.findById(id).orElseThrow();
-        if (o.getStatus()!=Status.ACTIVE) throw new IllegalArgumentException("otmena tolko dlya aktivnyh");
+        var o = najti(id);
+        trebovatAktivny(o);
         o.setStatus(Status.CANCELLED);
     }
     @Transactional
     public void udalit(UUID id) {
-        if (!repo.existsById(id)) throw new IllegalArgumentException("ne naydeno");
+        if (!repo.existsById(id)) throw neNaydeno(id);
         repo.deleteById(id);
         sse.rasslat(new ObligationDeleted(id));
+    }
+    private Obligation najti(UUID id) {
+        return repo.findById(id).orElseThrow(() -> neNaydeno(id));
+    }
+    private static void trebovatAktivny(Obligation o) {
+        if (o.getStatus()!=Status.ACTIVE)
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Действие доступно только для обязательства в статусе active, текущий статус: "
+                    + o.getStatus().name().toLowerCase());
+    }
+    private static ResponseStatusException neNaydeno(UUID id) {
+        return new ResponseStatusException(HttpStatus.NOT_FOUND, "Обязательство не найдено: " + id);
     }
 }
