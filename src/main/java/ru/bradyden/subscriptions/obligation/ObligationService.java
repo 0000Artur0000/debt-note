@@ -19,42 +19,42 @@ public class ObligationService {
     }
     public CreateObligationResult sozdat(CreateObligationRequest z) {
         var t = LocalDate.now(chasy);
-        var dub = repo.existsByNazvanieIgnoreCaseAndStatus(z.nazvanie(), Status.ACTIVE);
+        var dub = repo.existsByTitleIgnoreCaseAndStatus(z.title(), Status.ACTIVE);
         var o = new Obligation();
-        o.setNazvanie(z.nazvanie()); o.setSumma(z.summa()); o.setValuta(z.valuta());
-        o.setKategoriya(z.kategoriya()); o.setPeriodichnost(z.periodichnost());
-        o.setDataSledPlatezha(z.dataSledPlatezha());
-        o.setStatus(z.dataSledPlatezha().isBefore(t) ? Status.EXPIRED : Status.ACTIVE);
+        o.setTitle(z.title()); o.setAmount(z.amount()); o.setCurrency(z.currency());
+        o.setCategory(z.category()); o.setRecurrence(z.recurrence());
+        o.setNextPaymentDate(z.nextPaymentDate());
+        o.setStatus(z.nextPaymentDate().isBefore(t) ? Status.EXPIRED : Status.ACTIVE);
         repo.save(o);
-        return new CreateObligationResult(o, dub ? "Objazatelstvo s takim nazvaniem uzhe est" : null);
+        return new CreateObligationResult(o, dub ? "Активное обязательство с таким названием уже существует" : null);
     }
     @Transactional
     public List<Obligation> poluchitSpisok(Category k, Status s) {
         var t = LocalDate.now(chasy); var n = Instant.now(chasy);
         repo.pogasitProsrochennye(Status.ACTIVE, Status.EXPIRED, t, n);
-        var p = Obligation.builder().kategoriya(k).status(s).build();
-        return repo.findAll(Example.of(p), Sort.by("dataSledPlatezha"));
+        var p = Obligation.builder().category(k).status(s).build();
+        return repo.findAll(Example.of(p), Sort.by("nextPaymentDate"));
     }
     public UpcomingResult blizhayshie(int d) {
         var t = LocalDate.now(chasy);
-        var w = repo.findByDataSledPlatezhaBetweenOrderByDataSledPlatezhaAsc(t, t.plusDays(d));
+        var w = repo.findByNextPaymentDateBetweenOrderByNextPaymentDateAsc(t, t.plusDays(d));
         return w.stream().collect(teeing(
-            toMap(Obligation::getValuta, Obligation::getSumma, BigDecimal::add),
-            filtering(o->o.getKategoriya()==Category.SUBSCRIPTION&&o.getPeriodichnost()!=null,
-                mapping(o->new UpcomingResult.RenewalAlert(o.getId(),o.getNazvanie(),
-                    o.getSumma(),o.getValuta(),o.getDataSledPlatezha(),
-                    o.getPeriodichnost().name().toLowerCase()), toList())),
+            toMap(Obligation::getCurrency, Obligation::getAmount, BigDecimal::add),
+            filtering(o->o.getCategory()==Category.SUBSCRIPTION&&o.getRecurrence()!=null,
+                mapping(o->new UpcomingResult.RenewalAlert(o.getId(),o.getTitle(),
+                    o.getAmount(),o.getCurrency(),o.getNextPaymentDate(),
+                    o.getRecurrence().name().toLowerCase()), toList())),
             (tot,al)->new UpcomingResult(w,tot,al)));
     }
     @Transactional
     public PayResult oplatit(UUID id) {
         var o = repo.findById(id).orElseThrow();
         if (o.getStatus()!=Status.ACTIVE) throw new IllegalArgumentException("oplata tolko dlya aktivnyh");
-        var p = Payment.builder().idObyazatelstva(o.getId()).summa(o.getSumma())
-            .valuta(o.getValuta()).oplacheno(Instant.now(chasy)).build();
+        var p = Payment.builder().obligationId(o.getId()).amount(o.getAmount())
+            .currency(o.getCurrency()).paidAt(Instant.now(chasy)).build();
         em.persist(p);
-        if (o.getPeriodichnost()==null) o.setStatus(Status.CANCELLED);
-        else o.setDataSledPlatezha(o.getPeriodichnost().sleduyushchaya(o.getDataSledPlatezha()));
+        if (o.getRecurrence()==null) o.setStatus(Status.CANCELLED);
+        else o.setNextPaymentDate(o.getRecurrence().sleduyushchaya(o.getNextPaymentDate()));
         return new PayResult(o, p);
     }
     @Transactional

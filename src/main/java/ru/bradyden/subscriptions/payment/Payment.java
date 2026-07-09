@@ -1,5 +1,4 @@
 package ru.bradyden.subscriptions.payment;
-import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -20,12 +19,8 @@ public class Payment {
     @Id
     @UuidGenerator
     private UUID id;
-    @Column(name = "obligation_id")
-    private UUID idObyazatelstva;
-    @Column(name = "amount")
-    private BigDecimal summa;
-    @Column(name = "currency")
-    private String valuta;
-    @Column(name = "paid_at")
-    private Instant oplacheno;
+    private UUID obligationId;
+    private BigDecimal amount;
+    private String currency;
+    private Instant paidAt;
 }

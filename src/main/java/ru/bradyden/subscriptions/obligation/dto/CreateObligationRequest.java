@@ -8,10 +8,10 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 public record CreateObligationRequest(
-    @NotBlank @Size(max = 255) String nazvanie,
-    @NotNull @Positive BigDecimal summa,
-    @NotNull String valuta,
-    @NotNull Category kategoriya,
-    Recurrence periodichnost,
-    @NotNull LocalDate dataSledPlatezha
+    @NotBlank @Size(max = 255) String title,
+    @NotNull @Positive BigDecimal amount,
+    @NotNull String currency,
+    @NotNull Category category,
+    Recurrence recurrence,
+    @NotNull LocalDate nextPaymentDate
 ) {}

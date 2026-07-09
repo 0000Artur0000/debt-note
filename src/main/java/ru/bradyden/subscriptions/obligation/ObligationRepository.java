@@ -7,14 +7,14 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 public interface ObligationRepository extends JpaRepository<Obligation, UUID> {
-    List<Obligation> findAllByOrderByDataSledPlatezhaAsc();
-    List<Obligation> findByDataSledPlatezhaBetweenOrderByDataSledPlatezhaAsc(
+    List<Obligation> findAllByOrderByNextPaymentDateAsc();
+    List<Obligation> findByNextPaymentDateBetweenOrderByNextPaymentDateAsc(
         LocalDate nachalo, LocalDate konec);
-    boolean existsByNazvanieIgnoreCaseAndStatus(String nazvanie, Status status);
+    boolean existsByTitleIgnoreCaseAndStatus(String title, Status status);
     @Modifying
-    @Query("update Obligation o set o.status = :prosrochen, o.obnovleno = :seychas "
-        + "where o.status = :aktivny and o.dataSledPlatezha < :segodnya "
-        + "and o.periodichnost is null")
+    @Query("update Obligation o set o.status = :prosrochen, o.updatedAt = :seychas "
+        + "where o.status = :aktivny and o.nextPaymentDate < :segodnya "
+        + "and o.recurrence is null")
     int pogasitProsrochennye(Status aktivny, Status prosrochen,
                               LocalDate segodnya, Instant seychas);
 }
