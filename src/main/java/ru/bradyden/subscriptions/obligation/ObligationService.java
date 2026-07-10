@@ -15,10 +15,8 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Example;
 import org.springframework.data.domain.Sort;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 import ru.bradyden.subscriptions.obligation.dto.CreateObligationRequest;
 import ru.bradyden.subscriptions.obligation.dto.CreateObligationResult;
 import ru.bradyden.subscriptions.obligation.dto.ObligationMapper;
@@ -120,7 +118,7 @@ public class ObligationService {
     @Transactional
     public PayResult pay(UUID id) {
         var obligation = find(id);
-        requireActive(obligation);
+        requireActive(obligation, "pay");
 
         var payment = new Payment();
         payment.setObligationId(obligation.getId());
@@ -142,33 +140,28 @@ public class ObligationService {
     @Transactional
     public void cancel(UUID id) {
         var obligation = find(id);
-        requireActive(obligation);
+        requireActive(obligation, "cancel");
         obligation.setStatus(Status.CANCELLED);
     }
 
     @Transactional
     public void delete(UUID id) {
         if (!obligationRepository.existsById(id)) {
-            throw notFound(id);
+            throw new ObligationNotFoundException(id);
         }
         obligationRepository.deleteById(id);
         sseBroadcaster.broadcast(new ObligationDeleted(id));
     }
 
     private Obligation find(UUID id) {
-        return obligationRepository.findById(id).orElseThrow(() -> notFound(id));
+        return obligationRepository
+                .findById(id)
+                .orElseThrow(() -> new ObligationNotFoundException(id));
     }
 
-    private static void requireActive(Obligation obligation) {
+    private static void requireActive(Obligation obligation, String operation) {
         if (obligation.getStatus() != Status.ACTIVE) {
-            throw new ResponseStatusException(
-                    HttpStatus.UNPROCESSABLE_ENTITY,
-                    "Действие доступно только для обязательства в статусе active, текущий статус: "
-                            + obligation.getStatus().name().toLowerCase());
+            throw new InvalidObligationStateException(operation, obligation.getStatus());
         }
-    }
-
-    private static ResponseStatusException notFound(UUID id) {
-        return new ResponseStatusException(HttpStatus.NOT_FOUND, "Обязательство не найдено: " + id);
     }
 }

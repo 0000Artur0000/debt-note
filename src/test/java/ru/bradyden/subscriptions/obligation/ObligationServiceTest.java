@@ -28,7 +28,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Example;
 import org.springframework.data.domain.Sort;
-import org.springframework.web.server.ResponseStatusException;
 import ru.bradyden.subscriptions.obligation.dto.CreateObligationRequest;
 import ru.bradyden.subscriptions.payment.Payment;
 import ru.bradyden.subscriptions.sse.SseBroadcaster;
@@ -122,7 +121,10 @@ class ObligationServiceTest {
         obligation.setStatus(Status.CANCELLED);
         when(repository.findById(obligation.getId())).thenReturn(Optional.of(obligation));
 
-        assertStatus(422, () -> service.pay(obligation.getId()));
+        assertThatThrownBy(() -> service.pay(obligation.getId()))
+                .isInstanceOf(InvalidObligationStateException.class)
+                .hasMessageContaining("pay")
+                .hasMessageContaining("cancelled");
     }
 
     @Test
@@ -131,7 +133,10 @@ class ObligationServiceTest {
         obligation.setStatus(Status.EXPIRED);
         when(repository.findById(obligation.getId())).thenReturn(Optional.of(obligation));
 
-        assertStatus(422, () -> service.cancel(obligation.getId()));
+        assertThatThrownBy(() -> service.cancel(obligation.getId()))
+                .isInstanceOf(InvalidObligationStateException.class)
+                .hasMessageContaining("cancel")
+                .hasMessageContaining("expired");
     }
 
     @Test
@@ -139,7 +144,9 @@ class ObligationServiceTest {
         var id = UUID.randomUUID();
         when(repository.existsById(id)).thenReturn(false);
 
-        assertStatus(404, () -> service.delete(id));
+        assertThatThrownBy(() -> service.delete(id))
+                .isInstanceOf(ObligationNotFoundException.class)
+                .hasMessageContaining(id.toString());
     }
 
     @Test
@@ -189,17 +196,5 @@ class ObligationServiceTest {
         obligation.setNextPaymentDate(nextPaymentDate);
         obligation.setStatus(Status.ACTIVE);
         return obligation;
-    }
-
-    private static void assertStatus(int expectedStatus, Runnable operation) {
-        assertThatThrownBy(operation::run)
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(
-                        exception ->
-                                assertThat(
-                                                ((ResponseStatusException) exception)
-                                                        .getStatusCode()
-                                                        .value())
-                                        .isEqualTo(expectedStatus));
     }
 }

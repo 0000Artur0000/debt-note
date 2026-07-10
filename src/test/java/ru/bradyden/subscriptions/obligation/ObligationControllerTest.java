@@ -1,5 +1,6 @@
 package ru.bradyden.subscriptions.obligation;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
@@ -9,6 +10,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -21,10 +23,10 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.web.server.ResponseStatusException;
 import ru.bradyden.subscriptions.obligation.dto.CreateObligationResult;
 import ru.bradyden.subscriptions.obligation.dto.ObligationResponse;
 import ru.bradyden.subscriptions.obligation.dto.PayResult;
@@ -114,7 +116,27 @@ class ObligationControllerTest {
                                           "next_payment_date": "2026-08-09"
                                         }
                                         """))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.type").value("urn:problem:validation-failed"))
+                .andExpect(jsonPath("$.title").value("Ошибка валидации"))
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.instance").value("/obligations"))
+                .andExpect(jsonPath("$.code").value("validation_failed"))
+                .andExpect(jsonPath("$.violations[0].field").value("amount"))
+                .andExpect(jsonPath("$.violations[1].field").value("title"));
+
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void malformedJsonReturnsStableProblemDetails() throws Exception {
+        mockMvc.perform(post("/obligations").contentType("application/json").content("{\"title\":"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.type").value("urn:problem:malformed-request"))
+                .andExpect(jsonPath("$.code").value("malformed_request"))
+                .andExpect(jsonPath("$.instance").value("/obligations"));
 
         verifyNoInteractions(service);
     }
@@ -134,6 +156,14 @@ class ObligationControllerTest {
                 .andExpect(jsonPath("$[0].next_payment_date").value("2026-08-09"));
 
         verify(service).list(Category.SUBSCRIPTION, Status.ACTIVE);
+    }
+
+    @Test
+    void invalidEnumQueryReturnsValidationProblem() throws Exception {
+        mockMvc.perform(get("/obligations").param("category", "unknown"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("validation_failed"))
+                .andExpect(jsonPath("$.violations[0].field").value("category"));
     }
 
     @Test
@@ -162,6 +192,16 @@ class ObligationControllerTest {
                 .andExpect(jsonPath("$.renewal_alerts[0].recurrence").value("monthly"));
 
         verify(service).upcoming(7);
+    }
+
+    @Test
+    void negativeUpcomingWindowReturnsValidationProblem() throws Exception {
+        mockMvc.perform(get("/obligations/upcoming").param("days", "-1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("validation_failed"))
+                .andExpect(jsonPath("$.violations[0].field").value("days"));
+
+        verifyNoInteractions(service);
     }
 
     @Test
@@ -197,25 +237,38 @@ class ObligationControllerTest {
     @Test
     void payKeeps422ForInactiveObligation() throws Exception {
         when(service.pay(OBLIGATION_ID))
-                .thenThrow(
-                        new ResponseStatusException(
-                                HttpStatus.UNPROCESSABLE_ENTITY,
-                                "Действие доступно только для обязательства в статусе active"));
+                .thenThrow(new InvalidObligationStateException("pay", Status.CANCELLED));
 
         mockMvc.perform(post("/obligations/{id}/pay", OBLIGATION_ID))
-                .andExpect(status().isUnprocessableEntity());
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.type").value("urn:problem:obligation-not-active"))
+                .andExpect(jsonPath("$.code").value("obligation_not_active"))
+                .andExpect(jsonPath("$.detail").value(containsString("pay")));
     }
 
     @Test
     void deleteKeeps404ForUnknownId() throws Exception {
-        doThrow(
-                        new ResponseStatusException(
-                                HttpStatus.NOT_FOUND, "Обязательство не найдено: " + OBLIGATION_ID))
-                .when(service)
-                .delete(OBLIGATION_ID);
+        doThrow(new ObligationNotFoundException(OBLIGATION_ID)).when(service).delete(OBLIGATION_ID);
 
         mockMvc.perform(delete("/obligations/{id}", OBLIGATION_ID))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.type").value("urn:problem:obligation-not-found"))
+                .andExpect(jsonPath("$.code").value("obligation_not_found"))
+                .andExpect(jsonPath("$.detail").value(containsString(OBLIGATION_ID.toString())));
+    }
+
+    @Test
+    void concurrentModificationReturns409() throws Exception {
+        when(service.pay(OBLIGATION_ID))
+                .thenThrow(
+                        new ObjectOptimisticLockingFailureException(
+                                Obligation.class, OBLIGATION_ID));
+
+        mockMvc.perform(post("/obligations/{id}/pay", OBLIGATION_ID))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.type").value("urn:problem:concurrent-modification"))
+                .andExpect(jsonPath("$.code").value("concurrent_modification"));
     }
 
     private static ObligationResponse activeSubscription(LocalDate nextPaymentDate) {
