@@ -1,5 +1,6 @@
 package ru.bradyden.subscriptions.obligation;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
@@ -21,12 +22,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.http.MediaType;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import ru.bradyden.subscriptions.obligation.dto.CreateObligationRequest;
 import ru.bradyden.subscriptions.obligation.dto.CreateObligationResult;
 import ru.bradyden.subscriptions.obligation.dto.ObligationResponse;
 import ru.bradyden.subscriptions.obligation.dto.PayResult;
@@ -102,6 +105,33 @@ class ObligationControllerTest {
     }
 
     @Test
+    void createNormalizesTitleAndCurrencyBeforeCallingService() throws Exception {
+        when(service.create(any()))
+                .thenReturn(new CreateObligationResult(activeSubscription(PAYMENT_DATE), null));
+        var requestCaptor = ArgumentCaptor.forClass(CreateObligationRequest.class);
+
+        mockMvc.perform(
+                        post("/obligations")
+                                .contentType("application/json")
+                                .content(
+                                        """
+                                        {
+                                          "title": "  Яндекс.Плюс  ",
+                                          "amount": 399.00,
+                                          "currency": " rub ",
+                                          "category": "subscription",
+                                          "recurrence": "monthly",
+                                          "next_payment_date": "2026-08-09"
+                                        }
+                                        """))
+                .andExpect(status().isCreated());
+
+        verify(service).create(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().title()).isEqualTo("Яндекс.Плюс");
+        assertThat(requestCaptor.getValue().currency()).isEqualTo("RUB");
+    }
+
+    @Test
     void createRejectsInvalidRequestBeforeCallingService() throws Exception {
         mockMvc.perform(
                         post("/obligations")
@@ -137,6 +167,29 @@ class ObligationControllerTest {
                 .andExpect(jsonPath("$.type").value("urn:problem:malformed-request"))
                 .andExpect(jsonPath("$.code").value("malformed_request"))
                 .andExpect(jsonPath("$.instance").value("/obligations"));
+
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void createRejectsInvalidCurrencyAndExcessiveFractionScale() throws Exception {
+        mockMvc.perform(
+                        post("/obligations")
+                                .contentType("application/json")
+                                .content(
+                                        """
+                                        {
+                                          "title": "Подписка",
+                                          "amount": 10.999,
+                                          "currency": "ZZZ",
+                                          "category": "subscription",
+                                          "next_payment_date": "2026-08-09"
+                                        }
+                                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("validation_failed"))
+                .andExpect(jsonPath("$.violations[0].field").value("amount"))
+                .andExpect(jsonPath("$.violations[1].field").value("currency"));
 
         verifyNoInteractions(service);
     }
