@@ -1,86 +1,167 @@
 package ru.bradyden.subscriptions.obligation;
-import ru.bradyden.subscriptions.obligation.dto.*;
-import ru.bradyden.subscriptions.payment.Payment;
-import ru.bradyden.subscriptions.sse.SseBroadcaster;
+
+import static java.util.stream.Collectors.filtering;
+import static java.util.stream.Collectors.mapping;
+import static java.util.stream.Collectors.teeing;
+import static java.util.stream.Collectors.toList;
+import static java.util.stream.Collectors.toMap;
+
 import jakarta.persistence.EntityManager;
-import org.springframework.data.domain.*;
+import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.UUID;
+import org.springframework.data.domain.Example;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-import java.math.BigDecimal;
-import java.time.*;
-import java.util.*;
-import static java.util.stream.Collectors.*;
+import ru.bradyden.subscriptions.obligation.dto.CreateObligationRequest;
+import ru.bradyden.subscriptions.obligation.dto.CreateObligationResult;
+import ru.bradyden.subscriptions.obligation.dto.PayResult;
+import ru.bradyden.subscriptions.obligation.dto.UpcomingResult;
+import ru.bradyden.subscriptions.payment.Payment;
+import ru.bradyden.subscriptions.sse.SseBroadcaster;
+
 @Service
 public class ObligationService {
-    private final ObligationRepository repo; private final EntityManager em;
-    private final Clock chasy; private final SseBroadcaster sse;
-    public ObligationService(ObligationRepository r, EntityManager e, Clock c, SseBroadcaster s) {
-        repo=r; em=e; chasy=c; sse=s;
+    private final ObligationRepository obligationRepository;
+    private final EntityManager entityManager;
+    private final Clock clock;
+    private final SseBroadcaster sseBroadcaster;
+
+    public ObligationService(
+            ObligationRepository obligationRepository,
+            EntityManager entityManager,
+            Clock clock,
+            SseBroadcaster sseBroadcaster) {
+        this.obligationRepository = obligationRepository;
+        this.entityManager = entityManager;
+        this.clock = clock;
+        this.sseBroadcaster = sseBroadcaster;
     }
-    public CreateObligationResult sozdat(CreateObligationRequest z) {
-        var t = LocalDate.now(chasy);
-        var dub = repo.existsByTitleIgnoreCaseAndStatus(z.title(), Status.ACTIVE);
-        var o = new Obligation();
-        o.setTitle(z.title()); o.setAmount(z.amount()); o.setCurrency(z.currency());
-        o.setCategory(z.category()); o.setRecurrence(z.recurrence());
-        o.setNextPaymentDate(z.nextPaymentDate());
-        o.setStatus(z.nextPaymentDate().isBefore(t) ? Status.EXPIRED : Status.ACTIVE);
-        repo.save(o);
-        return new CreateObligationResult(o, dub ? "Активное обязательство с таким названием уже существует" : null);
+
+    public CreateObligationResult create(CreateObligationRequest request) {
+        var today = LocalDate.now(clock);
+        var duplicate =
+                obligationRepository.existsByTitleIgnoreCaseAndStatus(
+                        request.title(), Status.ACTIVE);
+
+        var obligation = new Obligation();
+        obligation.setTitle(request.title());
+        obligation.setAmount(request.amount());
+        obligation.setCurrency(request.currency());
+        obligation.setCategory(request.category());
+        obligation.setRecurrence(request.recurrence());
+        obligation.setNextPaymentDate(request.nextPaymentDate());
+        obligation.setStatus(
+                request.nextPaymentDate().isBefore(today) ? Status.EXPIRED : Status.ACTIVE);
+        obligationRepository.save(obligation);
+
+        var warning = duplicate ? "Активное обязательство с таким названием уже существует" : null;
+        return new CreateObligationResult(obligation, warning);
     }
+
     @Transactional
-    public List<Obligation> poluchitSpisok(Category k, Status s) {
-        var t = LocalDate.now(chasy); var n = Instant.now(chasy);
-        repo.pogasitProsrochennye(Status.ACTIVE, Status.EXPIRED, t, n);
-        var p = Obligation.builder().category(k).status(s).build();
-        return repo.findAll(Example.of(p), Sort.by("nextPaymentDate"));
+    public List<Obligation> list(Category category, Status status) {
+        var today = LocalDate.now(clock);
+        var now = Instant.now(clock);
+        obligationRepository.expireOverdueOneOffs(Status.ACTIVE, Status.EXPIRED, today, now);
+
+        var probe = new Obligation();
+        probe.setCategory(category);
+        probe.setStatus(status);
+        return obligationRepository.findAll(Example.of(probe), Sort.by("nextPaymentDate"));
     }
-    public UpcomingResult blizhayshie(int d) {
-        var t = LocalDate.now(chasy);
-        var w = repo.findByNextPaymentDateBetweenOrderByNextPaymentDateAsc(t, t.plusDays(d));
-        return w.stream().collect(teeing(
-            toMap(Obligation::getCurrency, Obligation::getAmount, BigDecimal::add),
-            filtering(o->o.getCategory()==Category.SUBSCRIPTION&&o.getRecurrence()!=null,
-                mapping(o->new UpcomingResult.RenewalAlert(o.getId(),o.getTitle(),
-                    o.getAmount(),o.getCurrency(),o.getNextPaymentDate(),
-                    o.getRecurrence().name().toLowerCase()), toList())),
-            (tot,al)->new UpcomingResult(w,tot,al)));
+
+    public UpcomingResult upcoming(int days) {
+        var today = LocalDate.now(clock);
+        var obligations =
+                obligationRepository.findByNextPaymentDateBetweenOrderByNextPaymentDateAsc(
+                        today, today.plusDays(days));
+
+        return obligations.stream()
+                .collect(
+                        teeing(
+                                toMap(
+                                        Obligation::getCurrency,
+                                        Obligation::getAmount,
+                                        BigDecimal::add),
+                                filtering(
+                                        obligation ->
+                                                obligation.getCategory() == Category.SUBSCRIPTION
+                                                        && obligation.getRecurrence() != null,
+                                        mapping(
+                                                obligation ->
+                                                        new UpcomingResult.RenewalAlert(
+                                                                obligation.getId(),
+                                                                obligation.getTitle(),
+                                                                obligation.getAmount(),
+                                                                obligation.getCurrency(),
+                                                                obligation.getNextPaymentDate(),
+                                                                obligation
+                                                                        .getRecurrence()
+                                                                        .name()
+                                                                        .toLowerCase()),
+                                                toList())),
+                                (totals, alerts) ->
+                                        new UpcomingResult(obligations, totals, alerts)));
     }
+
     @Transactional
-    public PayResult oplatit(UUID id) {
-        var o = najti(id);
-        trebovatAktivny(o);
-        var p = Payment.builder().obligationId(o.getId()).amount(o.getAmount())
-            .currency(o.getCurrency()).paidAt(Instant.now(chasy)).build();
-        em.persist(p);
-        if (o.getRecurrence()==null) o.setStatus(Status.CANCELLED);
-        else o.setNextPaymentDate(o.getRecurrence().sleduyushchaya(o.getNextPaymentDate()));
-        return new PayResult(o, p);
+    public PayResult pay(UUID id) {
+        var obligation = find(id);
+        requireActive(obligation);
+
+        var payment = new Payment();
+        payment.setObligationId(obligation.getId());
+        payment.setAmount(obligation.getAmount());
+        payment.setCurrency(obligation.getCurrency());
+        payment.setPaidAt(Instant.now(clock));
+        entityManager.persist(payment);
+
+        if (obligation.getRecurrence() == null) {
+            obligation.setStatus(Status.CANCELLED);
+        } else {
+            obligation.setNextPaymentDate(
+                    obligation.getRecurrence().nextDate(obligation.getNextPaymentDate()));
+        }
+        return new PayResult(obligation, payment);
     }
+
     @Transactional
-    public void otmenit(UUID id) {
-        var o = najti(id);
-        trebovatAktivny(o);
-        o.setStatus(Status.CANCELLED);
+    public void cancel(UUID id) {
+        var obligation = find(id);
+        requireActive(obligation);
+        obligation.setStatus(Status.CANCELLED);
     }
+
     @Transactional
-    public void udalit(UUID id) {
-        if (!repo.existsById(id)) throw neNaydeno(id);
-        repo.deleteById(id);
-        sse.rasslat(new ObligationDeleted(id));
+    public void delete(UUID id) {
+        if (!obligationRepository.existsById(id)) {
+            throw notFound(id);
+        }
+        obligationRepository.deleteById(id);
+        sseBroadcaster.broadcast(new ObligationDeleted(id));
     }
-    private Obligation najti(UUID id) {
-        return repo.findById(id).orElseThrow(() -> neNaydeno(id));
+
+    private Obligation find(UUID id) {
+        return obligationRepository.findById(id).orElseThrow(() -> notFound(id));
     }
-    private static void trebovatAktivny(Obligation o) {
-        if (o.getStatus()!=Status.ACTIVE)
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Действие доступно только для обязательства в статусе active, текущий статус: "
-                    + o.getStatus().name().toLowerCase());
+
+    private static void requireActive(Obligation obligation) {
+        if (obligation.getStatus() != Status.ACTIVE) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Действие доступно только для обязательства в статусе active, текущий статус: "
+                            + obligation.getStatus().name().toLowerCase());
+        }
     }
-    private static ResponseStatusException neNaydeno(UUID id) {
+
+    private static ResponseStatusException notFound(UUID id) {
         return new ResponseStatusException(HttpStatus.NOT_FOUND, "Обязательство не найдено: " + id);
     }
 }

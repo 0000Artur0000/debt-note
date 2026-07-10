@@ -45,10 +45,9 @@ class ObligationControllerTest {
     @Test
     void createReturns201AndCurrentJsonContract() throws Exception {
         var obligation = activeSubscription();
-        when(service.sozdat(any())).thenReturn(new CreateObligationResult(obligation, null));
+        when(service.create(any())).thenReturn(new CreateObligationResult(obligation, null));
 
-        mockMvc
-                .perform(
+        mockMvc.perform(
                         post("/obligations")
                                 .contentType("application/json")
                                 .content(
@@ -74,14 +73,13 @@ class ObligationControllerTest {
 
     @Test
     void createKeepsDuplicateAsWarningInsteadOfError() throws Exception {
-        when(service.sozdat(any()))
+        when(service.create(any()))
                 .thenReturn(
                         new CreateObligationResult(
                                 activeSubscription(),
                                 "Активное обязательство с таким названием уже существует"));
 
-        mockMvc
-                .perform(
+        mockMvc.perform(
                         post("/obligations")
                                 .contentType("application/json")
                                 .content(
@@ -102,8 +100,7 @@ class ObligationControllerTest {
 
     @Test
     void createRejectsInvalidRequestBeforeCallingService() throws Exception {
-        mockMvc
-                .perform(
+        mockMvc.perform(
                         post("/obligations")
                                 .contentType("application/json")
                                 .content(
@@ -123,11 +120,10 @@ class ObligationControllerTest {
 
     @Test
     void listAcceptsLowercaseCombinedFiltersAndReturnsSortedShape() throws Exception {
-        when(service.poluchitSpisok(Category.SUBSCRIPTION, Status.ACTIVE))
+        when(service.list(Category.SUBSCRIPTION, Status.ACTIVE))
                 .thenReturn(List.of(activeSubscription()));
 
-        mockMvc
-                .perform(
+        mockMvc.perform(
                         get("/obligations")
                                 .param("category", "subscription")
                                 .param("status", "active"))
@@ -136,7 +132,7 @@ class ObligationControllerTest {
                 .andExpect(jsonPath("$[0].status").value("active"))
                 .andExpect(jsonPath("$[0].next_payment_date").value("2026-08-09"));
 
-        verify(service).poluchitSpisok(Category.SUBSCRIPTION, Status.ACTIVE);
+        verify(service).list(Category.SUBSCRIPTION, Status.ACTIVE);
     }
 
     @Test
@@ -150,22 +146,21 @@ class ObligationControllerTest {
                         obligation.getCurrency(),
                         obligation.getNextPaymentDate(),
                         "monthly");
-        when(service.blizhayshie(7))
+        when(service.upcoming(7))
                 .thenReturn(
                         new UpcomingResult(
                                 List.of(obligation),
                                 Map.of("RUB", new BigDecimal("399.00")),
                                 List.of(alert)));
 
-        mockMvc
-                .perform(get("/obligations/upcoming"))
+        mockMvc.perform(get("/obligations/upcoming"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.obligations[0].title").value("Яндекс.Плюс"))
                 .andExpect(jsonPath("$.totals.RUB").value(399.0))
                 .andExpect(jsonPath("$.renewal_alerts[0].id").value(OBLIGATION_ID.toString()))
                 .andExpect(jsonPath("$.renewal_alerts[0].recurrence").value("monthly"));
 
-        verify(service).blizhayshie(7);
+        verify(service).upcoming(7);
     }
 
     @Test
@@ -173,10 +168,9 @@ class ObligationControllerTest {
         var obligation = activeSubscription();
         obligation.setNextPaymentDate(LocalDate.of(2026, 9, 9));
         var payment = payment();
-        when(service.oplatit(OBLIGATION_ID)).thenReturn(new PayResult(obligation, payment));
+        when(service.pay(OBLIGATION_ID)).thenReturn(new PayResult(obligation, payment));
 
-        mockMvc
-                .perform(post("/obligations/{id}/pay", OBLIGATION_ID))
+        mockMvc.perform(post("/obligations/{id}/pay", OBLIGATION_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.obligation.status").value("active"))
                 .andExpect(jsonPath("$.obligation.next_payment_date").value("2026-09-09"))
@@ -186,32 +180,29 @@ class ObligationControllerTest {
 
     @Test
     void cancelReturns204() throws Exception {
-        mockMvc
-                .perform(patch("/obligations/{id}/cancel", OBLIGATION_ID))
+        mockMvc.perform(patch("/obligations/{id}/cancel", OBLIGATION_ID))
                 .andExpect(status().isNoContent());
 
-        verify(service).otmenit(OBLIGATION_ID);
+        verify(service).cancel(OBLIGATION_ID);
     }
 
     @Test
     void deleteReturns204() throws Exception {
-        mockMvc
-                .perform(delete("/obligations/{id}", OBLIGATION_ID))
+        mockMvc.perform(delete("/obligations/{id}", OBLIGATION_ID))
                 .andExpect(status().isNoContent());
 
-        verify(service).udalit(OBLIGATION_ID);
+        verify(service).delete(OBLIGATION_ID);
     }
 
     @Test
     void payKeeps422ForInactiveObligation() throws Exception {
-        when(service.oplatit(OBLIGATION_ID))
+        when(service.pay(OBLIGATION_ID))
                 .thenThrow(
                         new ResponseStatusException(
                                 HttpStatus.UNPROCESSABLE_ENTITY,
                                 "Действие доступно только для обязательства в статусе active"));
 
-        mockMvc
-                .perform(post("/obligations/{id}/pay", OBLIGATION_ID))
+        mockMvc.perform(post("/obligations/{id}/pay", OBLIGATION_ID))
                 .andExpect(status().isUnprocessableEntity());
     }
 
@@ -219,13 +210,11 @@ class ObligationControllerTest {
     void deleteKeeps404ForUnknownId() throws Exception {
         doThrow(
                         new ResponseStatusException(
-                                HttpStatus.NOT_FOUND,
-                                "Обязательство не найдено: " + OBLIGATION_ID))
+                                HttpStatus.NOT_FOUND, "Обязательство не найдено: " + OBLIGATION_ID))
                 .when(service)
-                .udalit(OBLIGATION_ID);
+                .delete(OBLIGATION_ID);
 
-        mockMvc
-                .perform(delete("/obligations/{id}", OBLIGATION_ID))
+        mockMvc.perform(delete("/obligations/{id}", OBLIGATION_ID))
                 .andExpect(status().isNotFound());
     }
 

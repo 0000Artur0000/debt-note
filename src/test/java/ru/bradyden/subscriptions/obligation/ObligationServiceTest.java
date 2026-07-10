@@ -1,107 +1,205 @@
 package ru.bradyden.subscriptions.obligation;
-import ru.bradyden.subscriptions.obligation.dto.*;
-import ru.bradyden.subscriptions.payment.Payment;
-import ru.bradyden.subscriptions.sse.SseBroadcaster;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import jakarta.persistence.EntityManager;
-import org.junit.jupiter.api.*;
+import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.*;
+import org.springframework.data.domain.Example;
+import org.springframework.data.domain.Sort;
 import org.springframework.web.server.ResponseStatusException;
-import java.math.BigDecimal;
-import java.time.*;
-import java.util.*;
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
+import ru.bradyden.subscriptions.obligation.dto.CreateObligationRequest;
+import ru.bradyden.subscriptions.payment.Payment;
+import ru.bradyden.subscriptions.sse.SseBroadcaster;
+
 @ExtendWith(MockitoExtension.class)
 class ObligationServiceTest {
-    @Mock ObligationRepository repo; @Mock EntityManager em; @Mock SseBroadcaster sse;
-    Clock chasy = Clock.fixed(Instant.parse("2026-07-09T12:00:00Z"), ZoneId.of("UTC"));
-    ObligationService servis;
+    @Mock ObligationRepository repository;
+    @Mock EntityManager entityManager;
+    @Mock SseBroadcaster sseBroadcaster;
+
+    private final Clock clock =
+            Clock.fixed(Instant.parse("2026-07-09T12:00:00Z"), ZoneId.of("UTC"));
+
+    private ObligationService service;
+
     @BeforeEach
     void setUp() {
-        servis = new ObligationService(repo, em, chasy, sse);
-        lenient().when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
+        service = new ObligationService(repository, entityManager, clock, sseBroadcaster);
+        lenient().when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
-    @Test void datumVProshlomSrazuExpired() {
-        var z = new CreateObligationRequest("test",new BigDecimal("100"),"RUB",Category.SUBSCRIPTION,null,LocalDate.of(2026,1,1));
-        assertThat(servis.sozdat(z).obligation().getStatus()).isEqualTo(Status.EXPIRED);
+
+    @Test
+    void creationWithPastDateProducesExpiredObligation() {
+        var request = request("test", null, LocalDate.of(2026, 1, 1));
+
+        assertThat(service.create(request).obligation().getStatus()).isEqualTo(Status.EXPIRED);
     }
-    @Test void dublikatDaetPreduprezhdenie() {
-        when(repo.existsByTitleIgnoreCaseAndStatus("test",Status.ACTIVE)).thenReturn(true);
-        var z = new CreateObligationRequest("test",new BigDecimal("100"),"RUB",Category.SUBSCRIPTION,null,LocalDate.of(2026,8,1));
-        assertThat(servis.sozdat(z).warning()).isNotNull();
+
+    @Test
+    void activeDuplicateProducesWarning() {
+        when(repository.existsByTitleIgnoreCaseAndStatus("test", Status.ACTIVE)).thenReturn(true);
+        var request = request("test", null, LocalDate.of(2026, 8, 1));
+
+        assertThat(service.create(request).warning()).isNotNull();
     }
+
     @ParameterizedTest
-    @CsvSource({"MONTHLY,2025-01-31,2025-02-28","MONTHLY,2024-01-31,2024-02-29","QUARTERLY,2025-01-15,2025-04-15","YEARLY,2024-02-29,2025-02-28"})
-    void sdvigDaty(Recurrence r,LocalDate ot,LocalDate ozh){assertThat(r.sleduyushchaya(ot)).isEqualTo(ozh);}
+    @CsvSource({
+        "MONTHLY,2025-01-31,2025-02-28",
+        "MONTHLY,2024-01-31,2024-02-29",
+        "QUARTERLY,2025-01-15,2025-04-15",
+        "YEARLY,2024-02-29,2025-02-28"
+    })
+    void recurrenceCalculatesNextDate(
+            Recurrence recurrence, LocalDate currentDate, LocalDate expectedDate) {
+        assertThat(recurrence.nextDate(currentDate)).isEqualTo(expectedDate);
+    }
+
     @ParameterizedTest
-    @CsvSource({"MONTHLY,2026-08-15,2026-09-15","QUARTERLY,2026-08-15,2026-11-15","YEARLY,2026-08-15,2027-08-15"})
-    void oplataRekurrentnojSdvigaetDatuIOstavlyaetActive(Recurrence r,LocalDate cur,LocalDate next){
-        var o=aktivnoe(r,cur);
-        when(repo.findById(o.getId())).thenReturn(Optional.of(o));
-        var res=servis.oplatit(o.getId());
-        assertThat(res.obligation().getStatus()).isEqualTo(Status.ACTIVE);
-        assertThat(res.obligation().getNextPaymentDate()).isEqualTo(next);
-        assertThat(res.payment()).isNotNull();
-        verify(em).persist(any(Payment.class));
+    @CsvSource({
+        "MONTHLY,2026-08-15,2026-09-15",
+        "QUARTERLY,2026-08-15,2026-11-15",
+        "YEARLY,2026-08-15,2027-08-15"
+    })
+    void payingRecurringObligationAdvancesDateAndKeepsItActive(
+            Recurrence recurrence, LocalDate currentDate, LocalDate nextDate) {
+        var obligation = activeObligation(recurrence, currentDate);
+        when(repository.findById(obligation.getId())).thenReturn(Optional.of(obligation));
+
+        var result = service.pay(obligation.getId());
+
+        assertThat(result.obligation().getStatus()).isEqualTo(Status.ACTIVE);
+        assertThat(result.obligation().getNextPaymentDate()).isEqualTo(nextDate);
+        assertThat(result.payment()).isNotNull();
+        verify(entityManager).persist(any(Payment.class));
     }
-    @Test void oplata31ChislaMonthlyDaet28Fevralya(){
-        var o=aktivnoe(Recurrence.MONTHLY,LocalDate.of(2026,1,31));
-        when(repo.findById(o.getId())).thenReturn(Optional.of(o));
-        assertThat(servis.oplatit(o.getId()).obligation().getNextPaymentDate()).isEqualTo(LocalDate.of(2026,2,28));
+
+    @Test
+    void payingMonthlyObligationOnJanuary31SelectsFebruary28() {
+        var obligation = activeObligation(Recurrence.MONTHLY, LocalDate.of(2026, 1, 31));
+        when(repository.findById(obligation.getId())).thenReturn(Optional.of(obligation));
+
+        assertThat(service.pay(obligation.getId()).obligation().getNextPaymentDate())
+                .isEqualTo(LocalDate.of(2026, 2, 28));
     }
-    @Test void oplataRazovogoZakryvaetObyazatelstvo(){
-        var o=aktivnoe(null,LocalDate.of(2026,8,1));
-        when(repo.findById(o.getId())).thenReturn(Optional.of(o));
-        var res=servis.oplatit(o.getId());
-        assertThat(res.obligation().getStatus()).isEqualTo(Status.CANCELLED);
-        verify(em).persist(any(Payment.class));
+
+    @Test
+    void payingOneOffObligationCancelsIt() {
+        var obligation = activeObligation(null, LocalDate.of(2026, 8, 1));
+        when(repository.findById(obligation.getId())).thenReturn(Optional.of(obligation));
+
+        var result = service.pay(obligation.getId());
+
+        assertThat(result.obligation().getStatus()).isEqualTo(Status.CANCELLED);
+        verify(entityManager).persist(any(Payment.class));
     }
-    @Test void neAktivnyNelzyaOplatit(){
-        var o=aktivnoe(null,LocalDate.of(2026,8,1));o.setStatus(Status.CANCELLED);
-        when(repo.findById(o.getId())).thenReturn(Optional.of(o));
-        assertThatThrownBy(()->servis.oplatit(o.getId()))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e->assertThat(((ResponseStatusException)e).getStatusCode().value()).isEqualTo(422));
+
+    @Test
+    void payingInactiveObligationReturns422() {
+        var obligation = activeObligation(null, LocalDate.of(2026, 8, 1));
+        obligation.setStatus(Status.CANCELLED);
+        when(repository.findById(obligation.getId())).thenReturn(Optional.of(obligation));
+
+        assertStatus(422, () -> service.pay(obligation.getId()));
     }
-    @Test void neAktivnyNelzyaOtmenit(){
-        var o=aktivnoe(null,LocalDate.of(2026,8,1));o.setStatus(Status.EXPIRED);
-        when(repo.findById(o.getId())).thenReturn(Optional.of(o));
-        assertThatThrownBy(()->servis.otmenit(o.getId()))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e->assertThat(((ResponseStatusException)e).getStatusCode().value()).isEqualTo(422));
+
+    @Test
+    void cancellingInactiveObligationReturns422() {
+        var obligation = activeObligation(null, LocalDate.of(2026, 8, 1));
+        obligation.setStatus(Status.EXPIRED);
+        when(repository.findById(obligation.getId())).thenReturn(Optional.of(obligation));
+
+        assertStatus(422, () -> service.cancel(obligation.getId()));
     }
-    @Test void udalenieNesushchestvuyushchego404(){
-        var id=UUID.randomUUID();
-        when(repo.existsById(id)).thenReturn(false);
-        assertThatThrownBy(()->servis.udalit(id))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e->assertThat(((ResponseStatusException)e).getStatusCode().value()).isEqualTo(404));
+
+    @Test
+    void deletingUnknownObligationReturns404() {
+        var id = UUID.randomUUID();
+        when(repository.existsById(id)).thenReturn(false);
+
+        assertStatus(404, () -> service.delete(id));
     }
-    @Test void spisokPrimenyaetLazyExpiryPeredVyborkoj(){
-        when(repo.findAll(any(Example.class),any(Sort.class))).thenReturn(List.of());
-        servis.poluchitSpisok(null,null);
-        var poryadok=inOrder(repo);
-        poryadok.verify(repo).pogasitProsrochennye(eq(Status.ACTIVE),eq(Status.EXPIRED),any(),any());
-        poryadok.verify(repo).findAll(any(Example.class),any(Sort.class));
+
+    @Test
+    void listAppliesLazyExpiryBeforeQuerying() {
+        when(repository.findAll(ArgumentMatchers.<Example<Obligation>>any(), any(Sort.class)))
+                .thenReturn(List.of());
+
+        service.list(null, null);
+
+        var ordered = inOrder(repository);
+        ordered.verify(repository)
+                .expireOverdueOneOffs(eq(Status.ACTIVE), eq(Status.EXPIRED), any(), any());
+        ordered.verify(repository)
+                .findAll(ArgumentMatchers.<Example<Obligation>>any(), any(Sort.class));
     }
-    @Test void oknoBezObyazatelstv(){
-        when(repo.findByNextPaymentDateBetweenOrderByNextPaymentDateAsc(any(),any())).thenReturn(List.of());
-        var r=servis.blizhayshie(7);
-        assertThat(r.obligations()).isEmpty(); assertThat(r.totals()).isEmpty();
+
+    @Test
+    void upcomingWindowCanBeEmpty() {
+        when(repository.findByNextPaymentDateBetweenOrderByNextPaymentDateAsc(any(), any()))
+                .thenReturn(List.of());
+
+        var result = service.upcoming(7);
+
+        assertThat(result.obligations()).isEmpty();
+        assertThat(result.totals()).isEmpty();
     }
-    private Obligation aktivnoe(Recurrence r,LocalDate data){
-        var o=new Obligation();
-        o.setId(UUID.randomUUID());
-        o.setTitle("t");o.setAmount(new BigDecimal("100"));o.setCurrency("RUB");
-        o.setCategory(Category.SUBSCRIPTION);o.setRecurrence(r);
-        o.setNextPaymentDate(data);o.setStatus(Status.ACTIVE);
-        return o;
+
+    private static CreateObligationRequest request(
+            String title, Recurrence recurrence, LocalDate nextPaymentDate) {
+        return new CreateObligationRequest(
+                title,
+                new BigDecimal("100"),
+                "RUB",
+                Category.SUBSCRIPTION,
+                recurrence,
+                nextPaymentDate);
+    }
+
+    private static Obligation activeObligation(Recurrence recurrence, LocalDate nextPaymentDate) {
+        var obligation = new Obligation();
+        obligation.setId(UUID.randomUUID());
+        obligation.setTitle("test");
+        obligation.setAmount(new BigDecimal("100"));
+        obligation.setCurrency("RUB");
+        obligation.setCategory(Category.SUBSCRIPTION);
+        obligation.setRecurrence(recurrence);
+        obligation.setNextPaymentDate(nextPaymentDate);
+        obligation.setStatus(Status.ACTIVE);
+        return obligation;
+    }
+
+    private static void assertStatus(int expectedStatus, Runnable operation) {
+        assertThatThrownBy(operation::run)
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(
+                        exception ->
+                                assertThat(
+                                                ((ResponseStatusException) exception)
+                                                        .getStatusCode()
+                                                        .value())
+                                        .isEqualTo(expectedStatus));
     }
 }
