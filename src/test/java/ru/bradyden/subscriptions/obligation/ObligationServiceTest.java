@@ -54,7 +54,7 @@ class ObligationServiceTest {
     void creationWithPastDateProducesExpiredObligation() {
         var request = request("test", null, LocalDate.of(2026, 1, 1));
 
-        assertThat(service.create(request).obligation().getStatus()).isEqualTo(Status.EXPIRED);
+        assertThat(service.create(request).obligation().status()).isEqualTo(Status.EXPIRED);
     }
 
     @Test
@@ -90,8 +90,8 @@ class ObligationServiceTest {
 
         var result = service.pay(obligation.getId());
 
-        assertThat(result.obligation().getStatus()).isEqualTo(Status.ACTIVE);
-        assertThat(result.obligation().getNextPaymentDate()).isEqualTo(nextDate);
+        assertThat(result.obligation().status()).isEqualTo(Status.ACTIVE);
+        assertThat(result.obligation().nextPaymentDate()).isEqualTo(nextDate);
         assertThat(result.payment()).isNotNull();
         verify(entityManager).persist(any(Payment.class));
     }
@@ -101,7 +101,7 @@ class ObligationServiceTest {
         var obligation = activeObligation(Recurrence.MONTHLY, LocalDate.of(2026, 1, 31));
         when(repository.findById(obligation.getId())).thenReturn(Optional.of(obligation));
 
-        assertThat(service.pay(obligation.getId()).obligation().getNextPaymentDate())
+        assertThat(service.pay(obligation.getId()).obligation().nextPaymentDate())
                 .isEqualTo(LocalDate.of(2026, 2, 28));
     }
 
@@ -112,7 +112,7 @@ class ObligationServiceTest {
 
         var result = service.pay(obligation.getId());
 
-        assertThat(result.obligation().getStatus()).isEqualTo(Status.CANCELLED);
+        assertThat(result.obligation().status()).isEqualTo(Status.CANCELLED);
         verify(entityManager).persist(any(Payment.class));
     }
 

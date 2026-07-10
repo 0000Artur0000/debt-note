@@ -5,10 +5,9 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import ru.bradyden.subscriptions.obligation.Obligation;
 
 public record UpcomingResult(
-        List<Obligation> obligations,
+        List<ObligationResponse> obligations,
         Map<String, BigDecimal> totals,
         List<RenewalAlert> renewalAlerts) {
     public record RenewalAlert(

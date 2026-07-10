@@ -21,7 +21,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import ru.bradyden.subscriptions.obligation.dto.CreateObligationRequest;
 import ru.bradyden.subscriptions.obligation.dto.CreateObligationResult;
+import ru.bradyden.subscriptions.obligation.dto.ObligationMapper;
+import ru.bradyden.subscriptions.obligation.dto.ObligationResponse;
 import ru.bradyden.subscriptions.obligation.dto.PayResult;
+import ru.bradyden.subscriptions.obligation.dto.PaymentMapper;
 import ru.bradyden.subscriptions.obligation.dto.UpcomingResult;
 import ru.bradyden.subscriptions.payment.Payment;
 import ru.bradyden.subscriptions.sse.SseBroadcaster;
@@ -62,11 +65,11 @@ public class ObligationService {
         obligationRepository.save(obligation);
 
         var warning = duplicate ? "Активное обязательство с таким названием уже существует" : null;
-        return new CreateObligationResult(obligation, warning);
+        return new CreateObligationResult(ObligationMapper.toResponse(obligation), warning);
     }
 
     @Transactional
-    public List<Obligation> list(Category category, Status status) {
+    public List<ObligationResponse> list(Category category, Status status) {
         var today = LocalDate.now(clock);
         var now = Instant.now(clock);
         obligationRepository.expireOverdueOneOffs(Status.ACTIVE, Status.EXPIRED, today, now);
@@ -74,7 +77,9 @@ public class ObligationService {
         var probe = new Obligation();
         probe.setCategory(category);
         probe.setStatus(status);
-        return obligationRepository.findAll(Example.of(probe), Sort.by("nextPaymentDate"));
+        return obligationRepository.findAll(Example.of(probe), Sort.by("nextPaymentDate")).stream()
+                .map(ObligationMapper::toResponse)
+                .toList();
     }
 
     public UpcomingResult upcoming(int days) {
@@ -82,6 +87,7 @@ public class ObligationService {
         var obligations =
                 obligationRepository.findByNextPaymentDateBetweenOrderByNextPaymentDateAsc(
                         today, today.plusDays(days));
+        var obligationResponses = obligations.stream().map(ObligationMapper::toResponse).toList();
 
         return obligations.stream()
                 .collect(
@@ -108,7 +114,7 @@ public class ObligationService {
                                                                         .toLowerCase()),
                                                 toList())),
                                 (totals, alerts) ->
-                                        new UpcomingResult(obligations, totals, alerts)));
+                                        new UpcomingResult(obligationResponses, totals, alerts)));
     }
 
     @Transactional
@@ -129,7 +135,8 @@ public class ObligationService {
             obligation.setNextPaymentDate(
                     obligation.getRecurrence().nextDate(obligation.getNextPaymentDate()));
         }
-        return new PayResult(obligation, payment);
+        return new PayResult(
+                ObligationMapper.toResponse(obligation), PaymentMapper.toResponse(payment));
     }
 
     @Transactional

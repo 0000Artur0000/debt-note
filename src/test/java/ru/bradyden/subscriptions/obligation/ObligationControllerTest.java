@@ -26,9 +26,10 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.server.ResponseStatusException;
 import ru.bradyden.subscriptions.obligation.dto.CreateObligationResult;
+import ru.bradyden.subscriptions.obligation.dto.ObligationResponse;
 import ru.bradyden.subscriptions.obligation.dto.PayResult;
+import ru.bradyden.subscriptions.obligation.dto.PaymentResponse;
 import ru.bradyden.subscriptions.obligation.dto.UpcomingResult;
-import ru.bradyden.subscriptions.payment.Payment;
 import ru.bradyden.subscriptions.sse.SseBroadcaster;
 
 @WebMvcTest(ObligationController.class)
@@ -44,7 +45,7 @@ class ObligationControllerTest {
 
     @Test
     void createReturns201AndCurrentJsonContract() throws Exception {
-        var obligation = activeSubscription();
+        var obligation = activeSubscription(PAYMENT_DATE);
         when(service.create(any())).thenReturn(new CreateObligationResult(obligation, null));
 
         mockMvc.perform(
@@ -76,7 +77,7 @@ class ObligationControllerTest {
         when(service.create(any()))
                 .thenReturn(
                         new CreateObligationResult(
-                                activeSubscription(),
+                                activeSubscription(PAYMENT_DATE),
                                 "Активное обязательство с таким названием уже существует"));
 
         mockMvc.perform(
@@ -121,7 +122,7 @@ class ObligationControllerTest {
     @Test
     void listAcceptsLowercaseCombinedFiltersAndReturnsSortedShape() throws Exception {
         when(service.list(Category.SUBSCRIPTION, Status.ACTIVE))
-                .thenReturn(List.of(activeSubscription()));
+                .thenReturn(List.of(activeSubscription(PAYMENT_DATE)));
 
         mockMvc.perform(
                         get("/obligations")
@@ -137,14 +138,14 @@ class ObligationControllerTest {
 
     @Test
     void upcomingUsesSevenDaysByDefaultAndKeepsResponseShape() throws Exception {
-        var obligation = activeSubscription();
+        var obligation = activeSubscription(PAYMENT_DATE);
         var alert =
                 new UpcomingResult.RenewalAlert(
                         OBLIGATION_ID,
-                        obligation.getTitle(),
-                        obligation.getAmount(),
-                        obligation.getCurrency(),
-                        obligation.getNextPaymentDate(),
+                        obligation.title(),
+                        obligation.amount(),
+                        obligation.currency(),
+                        obligation.nextPaymentDate(),
                         "monthly");
         when(service.upcoming(7))
                 .thenReturn(
@@ -165,8 +166,7 @@ class ObligationControllerTest {
 
     @Test
     void payReturnsObligationAndPayment() throws Exception {
-        var obligation = activeSubscription();
-        obligation.setNextPaymentDate(LocalDate.of(2026, 9, 9));
+        var obligation = activeSubscription(LocalDate.of(2026, 9, 9));
         var payment = payment();
         when(service.pay(OBLIGATION_ID)).thenReturn(new PayResult(obligation, payment));
 
@@ -218,26 +218,26 @@ class ObligationControllerTest {
                 .andExpect(status().isNotFound());
     }
 
-    private static Obligation activeSubscription() {
-        var obligation = new Obligation();
-        obligation.setId(OBLIGATION_ID);
-        obligation.setTitle("Яндекс.Плюс");
-        obligation.setAmount(new BigDecimal("399.00"));
-        obligation.setCurrency("RUB");
-        obligation.setCategory(Category.SUBSCRIPTION);
-        obligation.setStatus(Status.ACTIVE);
-        obligation.setRecurrence(Recurrence.MONTHLY);
-        obligation.setNextPaymentDate(PAYMENT_DATE);
-        return obligation;
+    private static ObligationResponse activeSubscription(LocalDate nextPaymentDate) {
+        return new ObligationResponse(
+                OBLIGATION_ID,
+                "Яндекс.Плюс",
+                new BigDecimal("399.00"),
+                "RUB",
+                Category.SUBSCRIPTION,
+                Status.ACTIVE,
+                Recurrence.MONTHLY,
+                nextPaymentDate,
+                null,
+                null);
     }
 
-    private static Payment payment() {
-        var payment = new Payment();
-        payment.setId(UUID.fromString("d40b9a30-288c-4880-927c-902f9ec84d4e"));
-        payment.setObligationId(OBLIGATION_ID);
-        payment.setAmount(new BigDecimal("399.00"));
-        payment.setCurrency("RUB");
-        payment.setPaidAt(Instant.parse("2026-07-10T12:00:00Z"));
-        return payment;
+    private static PaymentResponse payment() {
+        return new PaymentResponse(
+                UUID.fromString("d40b9a30-288c-4880-927c-902f9ec84d4e"),
+                OBLIGATION_ID,
+                new BigDecimal("399.00"),
+                "RUB",
+                Instant.parse("2026-07-10T12:00:00Z"));
     }
 }

@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import ru.bradyden.subscriptions.obligation.dto.CreateObligationRequest;
 import ru.bradyden.subscriptions.obligation.dto.CreateObligationResult;
+import ru.bradyden.subscriptions.obligation.dto.ObligationResponse;
 import ru.bradyden.subscriptions.obligation.dto.PayResult;
 import ru.bradyden.subscriptions.obligation.dto.UpcomingResult;
 import ru.bradyden.subscriptions.sse.SseBroadcaster;
@@ -40,7 +41,7 @@ public class ObligationController {
     }
 
     @GetMapping
-    public List<Obligation> list(
+    public List<ObligationResponse> list(
             @RequestParam(name = "category", required = false) Category category,
             @RequestParam(name = "status", required = false) Status status) {
         return service.list(category, status);
