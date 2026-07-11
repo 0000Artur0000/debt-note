@@ -1,6 +1,5 @@
 package ru.bradyden.subscriptions;
 
-import java.time.Clock;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.convert.ApplicationConversionService;
@@ -12,11 +11,6 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class Application {
     public static void main(String[] args) {
         SpringApplication.run(Application.class, args);
-    }
-
-    @Bean
-    Clock clock() {
-        return Clock.systemDefaultZone();
     }
 
     @Bean

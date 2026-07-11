@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,12 +28,13 @@ import ru.bradyden.subscriptions.payment.PaymentRepository;
 class PaymentTransactionTest {
     @Autowired ObligationService service;
     @Autowired ObligationRepository obligationRepository;
+    @Autowired Clock clock;
 
     @MockitoBean PaymentRepository paymentRepository;
 
     @Test
     void paymentPersistenceFailureRollsBackObligationChange() {
-        var today = LocalDate.now();
+        var today = LocalDate.now(clock);
         var paymentDate = today.plusDays(10);
         var obligation =
                 Obligation.create(

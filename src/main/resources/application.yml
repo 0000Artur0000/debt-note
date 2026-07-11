@@ -17,3 +17,5 @@ spring:
     file: compose.yaml
 springdoc:
   swagger-ui.path: /docs
+app:
+  zone-id: ${APP_ZONE_ID:UTC}
