@@ -9,10 +9,12 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Objects;
 import java.util.UUID;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.UuidGenerator;
+import ru.bradyden.subscriptions.payment.Payment;
 
 @Entity
 @Table(name = "obligations")
@@ -38,85 +40,108 @@ public class Obligation {
 
     @UpdateTimestamp private Instant updatedAt;
 
-    public Obligation() {}
+    protected Obligation() {}
+
+    public static Obligation create(
+            String title,
+            BigDecimal amount,
+            String currency,
+            Category category,
+            Recurrence recurrence,
+            LocalDate nextPaymentDate,
+            LocalDate today) {
+        var obligation = new Obligation();
+        obligation.title = requireText(title, "title");
+        obligation.amount = requirePositive(amount);
+        obligation.currency = requireText(currency, "currency");
+        obligation.category = Objects.requireNonNull(category, "category must not be null");
+        obligation.recurrence = recurrence;
+        obligation.nextPaymentDate =
+                Objects.requireNonNull(nextPaymentDate, "nextPaymentDate must not be null");
+        var currentDate = Objects.requireNonNull(today, "today must not be null");
+        obligation.status = nextPaymentDate.isBefore(currentDate) ? Status.EXPIRED : Status.ACTIVE;
+        return obligation;
+    }
+
+    public Payment pay(Instant paidAt) {
+        requireActive("pay");
+
+        var payment = new Payment();
+        payment.setObligationId(id);
+        payment.setAmount(amount);
+        payment.setCurrency(currency);
+        payment.setPaidAt(Objects.requireNonNull(paidAt, "paidAt must not be null"));
+
+        if (recurrence == null) {
+            status = Status.CANCELLED;
+        } else {
+            nextPaymentDate = recurrence.nextDate(nextPaymentDate);
+        }
+        return payment;
+    }
+
+    public void cancel() {
+        requireActive("cancel");
+        status = Status.CANCELLED;
+    }
 
     public UUID getId() {
         return id;
-    }
-
-    public void setId(UUID id) {
-        this.id = id;
     }
 
     public String getTitle() {
         return title;
     }
 
-    public void setTitle(String title) {
-        this.title = title;
-    }
-
     public BigDecimal getAmount() {
         return amount;
-    }
-
-    public void setAmount(BigDecimal amount) {
-        this.amount = amount;
     }
 
     public String getCurrency() {
         return currency;
     }
 
-    public void setCurrency(String currency) {
-        this.currency = currency;
-    }
-
     public Category getCategory() {
         return category;
-    }
-
-    public void setCategory(Category category) {
-        this.category = category;
     }
 
     public Status getStatus() {
         return status;
     }
 
-    public void setStatus(Status status) {
-        this.status = status;
-    }
-
     public Recurrence getRecurrence() {
         return recurrence;
-    }
-
-    public void setRecurrence(Recurrence recurrence) {
-        this.recurrence = recurrence;
     }
 
     public LocalDate getNextPaymentDate() {
         return nextPaymentDate;
     }
 
-    public void setNextPaymentDate(LocalDate nextPaymentDate) {
-        this.nextPaymentDate = nextPaymentDate;
-    }
-
     public Instant getCreatedAt() {
         return createdAt;
-    }
-
-    public void setCreatedAt(Instant createdAt) {
-        this.createdAt = createdAt;
     }
 
     public Instant getUpdatedAt() {
         return updatedAt;
     }
 
-    public void setUpdatedAt(Instant updatedAt) {
-        this.updatedAt = updatedAt;
+    private void requireActive(String operation) {
+        if (status != Status.ACTIVE) {
+            throw new InvalidObligationStateException(operation, status);
+        }
+    }
+
+    private static String requireText(String value, String field) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(field + " must not be blank");
+        }
+        return value;
+    }
+
+    private static BigDecimal requirePositive(BigDecimal value) {
+        if (value == null || value.signum() <= 0) {
+            throw new IllegalArgumentException("amount must be positive");
+        }
+        return value;
     }
 }

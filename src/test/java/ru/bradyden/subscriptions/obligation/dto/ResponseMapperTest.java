@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 import ru.bradyden.subscriptions.obligation.Category;
 import ru.bradyden.subscriptions.obligation.Obligation;
 import ru.bradyden.subscriptions.obligation.Recurrence;
@@ -21,17 +22,18 @@ class ResponseMapperTest {
     void mapsEveryObligationField() {
         var createdAt = Instant.parse("2026-07-11T10:00:00Z");
         var updatedAt = Instant.parse("2026-07-11T11:00:00Z");
-        var obligation = new Obligation();
-        obligation.setId(OBLIGATION_ID);
-        obligation.setTitle("Яндекс.Плюс");
-        obligation.setAmount(new BigDecimal("399.00"));
-        obligation.setCurrency("RUB");
-        obligation.setCategory(Category.SUBSCRIPTION);
-        obligation.setStatus(Status.ACTIVE);
-        obligation.setRecurrence(Recurrence.MONTHLY);
-        obligation.setNextPaymentDate(LocalDate.of(2026, 8, 9));
-        obligation.setCreatedAt(createdAt);
-        obligation.setUpdatedAt(updatedAt);
+        var obligation =
+                Obligation.create(
+                        "Яндекс.Плюс",
+                        new BigDecimal("399.00"),
+                        "RUB",
+                        Category.SUBSCRIPTION,
+                        Recurrence.MONTHLY,
+                        LocalDate.of(2026, 8, 9),
+                        LocalDate.of(2026, 7, 11));
+        ReflectionTestUtils.setField(obligation, "id", OBLIGATION_ID);
+        ReflectionTestUtils.setField(obligation, "createdAt", createdAt);
+        ReflectionTestUtils.setField(obligation, "updatedAt", updatedAt);
 
         var response = ObligationMapper.toResponse(obligation);
 

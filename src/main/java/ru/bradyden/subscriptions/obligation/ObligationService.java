@@ -13,8 +13,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.data.domain.Example;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.bradyden.subscriptions.obligation.dto.CreateObligationRequest;
@@ -24,7 +22,6 @@ import ru.bradyden.subscriptions.obligation.dto.ObligationResponse;
 import ru.bradyden.subscriptions.obligation.dto.PayResult;
 import ru.bradyden.subscriptions.obligation.dto.PaymentMapper;
 import ru.bradyden.subscriptions.obligation.dto.UpcomingResult;
-import ru.bradyden.subscriptions.payment.Payment;
 import ru.bradyden.subscriptions.sse.SseBroadcaster;
 
 @Service
@@ -51,15 +48,15 @@ public class ObligationService {
                 obligationRepository.existsByTitleIgnoreCaseAndStatus(
                         request.title(), Status.ACTIVE);
 
-        var obligation = new Obligation();
-        obligation.setTitle(request.title());
-        obligation.setAmount(request.amount());
-        obligation.setCurrency(request.currency());
-        obligation.setCategory(request.category());
-        obligation.setRecurrence(request.recurrence());
-        obligation.setNextPaymentDate(request.nextPaymentDate());
-        obligation.setStatus(
-                request.nextPaymentDate().isBefore(today) ? Status.EXPIRED : Status.ACTIVE);
+        var obligation =
+                Obligation.create(
+                        request.title(),
+                        request.amount(),
+                        request.currency(),
+                        request.category(),
+                        request.recurrence(),
+                        request.nextPaymentDate(),
+                        today);
         obligationRepository.save(obligation);
 
         var warning = duplicate ? "Активное обязательство с таким названием уже существует" : null;
@@ -72,10 +69,7 @@ public class ObligationService {
         var now = Instant.now(clock);
         obligationRepository.expireOverdueOneOffs(Status.ACTIVE, Status.EXPIRED, today, now);
 
-        var probe = new Obligation();
-        probe.setCategory(category);
-        probe.setStatus(status);
-        return obligationRepository.findAll(Example.of(probe), Sort.by("nextPaymentDate")).stream()
+        return obligationRepository.findAllFiltered(category, status).stream()
                 .map(ObligationMapper::toResponse)
                 .toList();
     }
@@ -118,21 +112,8 @@ public class ObligationService {
     @Transactional
     public PayResult pay(UUID id) {
         var obligation = find(id);
-        requireActive(obligation, "pay");
-
-        var payment = new Payment();
-        payment.setObligationId(obligation.getId());
-        payment.setAmount(obligation.getAmount());
-        payment.setCurrency(obligation.getCurrency());
-        payment.setPaidAt(Instant.now(clock));
+        var payment = obligation.pay(Instant.now(clock));
         entityManager.persist(payment);
-
-        if (obligation.getRecurrence() == null) {
-            obligation.setStatus(Status.CANCELLED);
-        } else {
-            obligation.setNextPaymentDate(
-                    obligation.getRecurrence().nextDate(obligation.getNextPaymentDate()));
-        }
         return new PayResult(
                 ObligationMapper.toResponse(obligation), PaymentMapper.toResponse(payment));
     }
@@ -140,8 +121,7 @@ public class ObligationService {
     @Transactional
     public void cancel(UUID id) {
         var obligation = find(id);
-        requireActive(obligation, "cancel");
-        obligation.setStatus(Status.CANCELLED);
+        obligation.cancel();
     }
 
     @Transactional
@@ -157,11 +137,5 @@ public class ObligationService {
         return obligationRepository
                 .findById(id)
                 .orElseThrow(() -> new ObligationNotFoundException(id));
-    }
-
-    private static void requireActive(Obligation obligation, String operation) {
-        if (obligation.getStatus() != Status.ACTIVE) {
-            throw new InvalidObligationStateException(operation, obligation.getStatus());
-        }
     }
 }

@@ -47,19 +47,57 @@ class ObligationRepositoryTest {
                 .isFalse();
     }
 
+    @Test
+    void filteredListCombinesFiltersAndSortsByPaymentDate() {
+        var later =
+                persist(
+                        Recurrence.MONTHLY,
+                        TODAY.plusDays(10),
+                        Status.ACTIVE,
+                        "Поздняя подписка",
+                        Category.SUBSCRIPTION);
+        var earlier =
+                persist(
+                        Recurrence.MONTHLY,
+                        TODAY.plusDays(2),
+                        Status.ACTIVE,
+                        "Ближайшая подписка",
+                        Category.SUBSCRIPTION);
+        persist(null, TODAY.plusDays(1), Status.ACTIVE, "Счёт", Category.BILL);
+        persist(
+                Recurrence.MONTHLY,
+                TODAY.plusDays(3),
+                Status.CANCELLED,
+                "Отменённая подписка",
+                Category.SUBSCRIPTION);
+
+        var result = repository.findAllFiltered(Category.SUBSCRIPTION, Status.ACTIVE);
+
+        assertThat(result).extracting(Obligation::getId).containsExactly(earlier, later);
+    }
+
     private UUID persist(Recurrence recurrence, LocalDate date, Status status) {
         return persist(recurrence, date, status, "Кинопоиск " + UUID.randomUUID());
     }
 
     private UUID persist(Recurrence recurrence, LocalDate date, Status status, String title) {
-        var obligation = new Obligation();
-        obligation.setTitle(title);
-        obligation.setAmount(new BigDecimal("399.00"));
-        obligation.setCurrency("RUB");
-        obligation.setCategory(Category.SUBSCRIPTION);
-        obligation.setRecurrence(recurrence);
-        obligation.setNextPaymentDate(date);
-        obligation.setStatus(status);
+        return persist(recurrence, date, status, title, Category.SUBSCRIPTION);
+    }
+
+    private UUID persist(
+            Recurrence recurrence, LocalDate date, Status status, String title, Category category) {
+        var obligation =
+                Obligation.create(
+                        title,
+                        new BigDecimal("399.00"),
+                        "RUB",
+                        category,
+                        recurrence,
+                        date,
+                        date.minusDays(1));
+        if (status == Status.CANCELLED) {
+            obligation.cancel();
+        }
         return entityManager.persistAndFlush(obligation).getId();
     }
 

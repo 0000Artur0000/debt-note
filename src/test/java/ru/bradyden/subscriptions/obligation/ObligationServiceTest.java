@@ -23,11 +23,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Example;
-import org.springframework.data.domain.Sort;
+import org.springframework.test.util.ReflectionTestUtils;
 import ru.bradyden.subscriptions.obligation.dto.CreateObligationRequest;
 import ru.bradyden.subscriptions.payment.Payment;
 import ru.bradyden.subscriptions.sse.SseBroadcaster;
@@ -118,7 +116,7 @@ class ObligationServiceTest {
     @Test
     void payingInactiveObligationReturns422() {
         var obligation = activeObligation(null, LocalDate.of(2026, 8, 1));
-        obligation.setStatus(Status.CANCELLED);
+        obligation.cancel();
         when(repository.findById(obligation.getId())).thenReturn(Optional.of(obligation));
 
         assertThatThrownBy(() -> service.pay(obligation.getId()))
@@ -129,8 +127,7 @@ class ObligationServiceTest {
 
     @Test
     void cancellingInactiveObligationReturns422() {
-        var obligation = activeObligation(null, LocalDate.of(2026, 8, 1));
-        obligation.setStatus(Status.EXPIRED);
+        var obligation = expiredObligation(LocalDate.of(2026, 8, 1));
         when(repository.findById(obligation.getId())).thenReturn(Optional.of(obligation));
 
         assertThatThrownBy(() -> service.cancel(obligation.getId()))
@@ -151,16 +148,14 @@ class ObligationServiceTest {
 
     @Test
     void listAppliesLazyExpiryBeforeQuerying() {
-        when(repository.findAll(ArgumentMatchers.<Example<Obligation>>any(), any(Sort.class)))
-                .thenReturn(List.of());
+        when(repository.findAllFiltered(null, null)).thenReturn(List.of());
 
         service.list(null, null);
 
         var ordered = inOrder(repository);
         ordered.verify(repository)
                 .expireOverdueOneOffs(eq(Status.ACTIVE), eq(Status.EXPIRED), any(), any());
-        ordered.verify(repository)
-                .findAll(ArgumentMatchers.<Example<Obligation>>any(), any(Sort.class));
+        ordered.verify(repository).findAllFiltered(null, null);
     }
 
     @Test
@@ -186,15 +181,30 @@ class ObligationServiceTest {
     }
 
     private static Obligation activeObligation(Recurrence recurrence, LocalDate nextPaymentDate) {
-        var obligation = new Obligation();
-        obligation.setId(UUID.randomUUID());
-        obligation.setTitle("test");
-        obligation.setAmount(new BigDecimal("100"));
-        obligation.setCurrency("RUB");
-        obligation.setCategory(Category.SUBSCRIPTION);
-        obligation.setRecurrence(recurrence);
-        obligation.setNextPaymentDate(nextPaymentDate);
-        obligation.setStatus(Status.ACTIVE);
+        var obligation =
+                Obligation.create(
+                        "test",
+                        new BigDecimal("100"),
+                        "RUB",
+                        Category.SUBSCRIPTION,
+                        recurrence,
+                        nextPaymentDate,
+                        nextPaymentDate.minusDays(1));
+        ReflectionTestUtils.setField(obligation, "id", UUID.randomUUID());
+        return obligation;
+    }
+
+    private static Obligation expiredObligation(LocalDate nextPaymentDate) {
+        var obligation =
+                Obligation.create(
+                        "test",
+                        new BigDecimal("100"),
+                        "RUB",
+                        Category.SUBSCRIPTION,
+                        null,
+                        nextPaymentDate,
+                        nextPaymentDate.plusDays(1));
+        ReflectionTestUtils.setField(obligation, "id", UUID.randomUUID());
         return obligation;
     }
 }
