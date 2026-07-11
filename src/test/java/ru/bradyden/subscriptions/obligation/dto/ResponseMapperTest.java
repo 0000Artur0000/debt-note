@@ -56,12 +56,8 @@ class ResponseMapperTest {
     void mapsEveryPaymentField() {
         var paymentId = UUID.fromString("d40b9a30-288c-4880-927c-902f9ec84d4e");
         var paidAt = Instant.parse("2026-07-11T12:00:00Z");
-        var payment = new Payment();
-        payment.setId(paymentId);
-        payment.setObligationId(OBLIGATION_ID);
-        payment.setAmount(new BigDecimal("399.00"));
-        payment.setCurrency("RUB");
-        payment.setPaidAt(paidAt);
+        var payment = Payment.create(OBLIGATION_ID, new BigDecimal("399.00"), "RUB", paidAt);
+        ReflectionTestUtils.setField(payment, "id", paymentId);
 
         var response = PaymentMapper.toResponse(payment);
 

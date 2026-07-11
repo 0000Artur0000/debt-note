@@ -95,13 +95,16 @@ class ObligationTest {
     }
 
     private static Obligation create(Recurrence recurrence, LocalDate nextPaymentDate) {
-        return Obligation.create(
-                "Подписка",
-                new BigDecimal("399.00"),
-                "RUB",
-                Category.SUBSCRIPTION,
-                recurrence,
-                nextPaymentDate,
-                TODAY);
+        var obligation =
+                Obligation.create(
+                        "Подписка",
+                        new BigDecimal("399.00"),
+                        "RUB",
+                        Category.SUBSCRIPTION,
+                        recurrence,
+                        nextPaymentDate,
+                        TODAY);
+        ReflectionTestUtils.setField(obligation, "id", UUID.randomUUID());
+        return obligation;
     }
 }

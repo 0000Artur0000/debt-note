@@ -5,6 +5,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Objects;
 import java.util.UUID;
 import org.hibernate.annotations.UuidGenerator;
 
@@ -18,45 +19,36 @@ public class Payment {
     private String currency;
     private Instant paidAt;
 
-    public Payment() {}
+    protected Payment() {}
+
+    public static Payment create(
+            UUID obligationId, BigDecimal amount, String currency, Instant paidAt) {
+        var payment = new Payment();
+        payment.obligationId =
+                Objects.requireNonNull(obligationId, "obligationId must not be null");
+        payment.amount = Objects.requireNonNull(amount, "amount must not be null");
+        payment.currency = Objects.requireNonNull(currency, "currency must not be null");
+        payment.paidAt = Objects.requireNonNull(paidAt, "paidAt must not be null");
+        return payment;
+    }
 
     public UUID getId() {
         return id;
-    }
-
-    public void setId(UUID id) {
-        this.id = id;
     }
 
     public UUID getObligationId() {
         return obligationId;
     }
 
-    public void setObligationId(UUID obligationId) {
-        this.obligationId = obligationId;
-    }
-
     public BigDecimal getAmount() {
         return amount;
-    }
-
-    public void setAmount(BigDecimal amount) {
-        this.amount = amount;
     }
 
     public String getCurrency() {
         return currency;
     }
 
-    public void setCurrency(String currency) {
-        this.currency = currency;
-    }
-
     public Instant getPaidAt() {
         return paidAt;
-    }
-
-    public void setPaidAt(Instant paidAt) {
-        this.paidAt = paidAt;
     }
 }

@@ -9,7 +9,6 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -28,12 +27,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 import ru.bradyden.subscriptions.obligation.dto.CreateObligationRequest;
 import ru.bradyden.subscriptions.payment.Payment;
+import ru.bradyden.subscriptions.payment.PaymentRepository;
 import ru.bradyden.subscriptions.sse.SseBroadcaster;
 
 @ExtendWith(MockitoExtension.class)
 class ObligationServiceTest {
     @Mock ObligationRepository repository;
-    @Mock EntityManager entityManager;
+    @Mock PaymentRepository paymentRepository;
     @Mock SseBroadcaster sseBroadcaster;
 
     private final Clock clock =
@@ -43,7 +43,7 @@ class ObligationServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ObligationService(repository, entityManager, clock, sseBroadcaster);
+        service = new ObligationService(repository, paymentRepository, clock, sseBroadcaster);
         lenient().when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
@@ -90,7 +90,7 @@ class ObligationServiceTest {
         assertThat(result.obligation().status()).isEqualTo(Status.ACTIVE);
         assertThat(result.obligation().nextPaymentDate()).isEqualTo(nextDate);
         assertThat(result.payment()).isNotNull();
-        verify(entityManager).persist(any(Payment.class));
+        verify(paymentRepository).save(any(Payment.class));
     }
 
     @Test
@@ -110,7 +110,7 @@ class ObligationServiceTest {
         var result = service.pay(obligation.getId());
 
         assertThat(result.obligation().status()).isEqualTo(Status.CANCELLED);
-        verify(entityManager).persist(any(Payment.class));
+        verify(paymentRepository).save(any(Payment.class));
     }
 
     @Test

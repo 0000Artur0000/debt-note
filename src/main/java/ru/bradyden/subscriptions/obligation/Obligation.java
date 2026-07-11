@@ -66,11 +66,7 @@ public class Obligation {
     public Payment pay(Instant paidAt) {
         requireActive("pay");
 
-        var payment = new Payment();
-        payment.setObligationId(id);
-        payment.setAmount(amount);
-        payment.setCurrency(currency);
-        payment.setPaidAt(Objects.requireNonNull(paidAt, "paidAt must not be null"));
+        var payment = Payment.create(id, amount, currency, paidAt);
 
         if (recurrence == null) {
             status = Status.CANCELLED;

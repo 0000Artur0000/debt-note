@@ -6,7 +6,6 @@ import static java.util.stream.Collectors.teeing;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
 
-import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -22,22 +21,23 @@ import ru.bradyden.subscriptions.obligation.dto.ObligationResponse;
 import ru.bradyden.subscriptions.obligation.dto.PayResult;
 import ru.bradyden.subscriptions.obligation.dto.PaymentMapper;
 import ru.bradyden.subscriptions.obligation.dto.UpcomingResult;
+import ru.bradyden.subscriptions.payment.PaymentRepository;
 import ru.bradyden.subscriptions.sse.SseBroadcaster;
 
 @Service
 public class ObligationService {
     private final ObligationRepository obligationRepository;
-    private final EntityManager entityManager;
+    private final PaymentRepository paymentRepository;
     private final Clock clock;
     private final SseBroadcaster sseBroadcaster;
 
     public ObligationService(
             ObligationRepository obligationRepository,
-            EntityManager entityManager,
+            PaymentRepository paymentRepository,
             Clock clock,
             SseBroadcaster sseBroadcaster) {
         this.obligationRepository = obligationRepository;
-        this.entityManager = entityManager;
+        this.paymentRepository = paymentRepository;
         this.clock = clock;
         this.sseBroadcaster = sseBroadcaster;
     }
@@ -113,7 +113,7 @@ public class ObligationService {
     public PayResult pay(UUID id) {
         var obligation = find(id);
         var payment = obligation.pay(Instant.now(clock));
-        entityManager.persist(payment);
+        paymentRepository.save(payment);
         return new PayResult(
                 ObligationMapper.toResponse(obligation), PaymentMapper.toResponse(payment));
     }
