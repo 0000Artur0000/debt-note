@@ -81,6 +81,28 @@ class ObligationTest {
     }
 
     @Test
+    void monthlyScheduleRestoresAnchorAfterShortMonth() {
+        var obligation = create(Recurrence.MONTHLY, LocalDate.of(2027, 1, 31));
+
+        obligation.pay(Instant.parse("2027-01-01T00:00:00Z"));
+        assertThat(obligation.getNextPaymentDate()).isEqualTo(LocalDate.of(2027, 2, 28));
+
+        obligation.pay(Instant.parse("2027-02-01T00:00:00Z"));
+        assertThat(obligation.getNextPaymentDate()).isEqualTo(LocalDate.of(2027, 3, 31));
+    }
+
+    @Test
+    void yearlyScheduleRestoresLeapDay() {
+        var obligation = create(Recurrence.YEARLY, LocalDate.of(2028, 2, 29));
+
+        for (int year = 2029; year <= 2032; year++) {
+            obligation.pay(Instant.parse(year + "-01-01T00:00:00Z"));
+        }
+
+        assertThat(obligation.getNextPaymentDate()).isEqualTo(LocalDate.of(2032, 2, 29));
+    }
+
+    @Test
     void cancelChangesOnlyActiveObligation() {
         var obligation = create(null, TODAY.plusDays(1));
 

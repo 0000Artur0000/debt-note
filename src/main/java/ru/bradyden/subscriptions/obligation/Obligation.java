@@ -77,7 +77,7 @@ public class Obligation {
         if (recurrence == null) {
             status = Status.CANCELLED;
         } else {
-            nextPaymentDate = recurrence.nextDate(nextPaymentDate);
+            nextPaymentDate = recurrence.nextDate(nextPaymentDate, billingAnchorDay);
         }
         return payment;
     }

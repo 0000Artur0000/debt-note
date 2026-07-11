@@ -64,18 +64,6 @@ class ObligationServiceTest {
 
     @ParameterizedTest
     @CsvSource({
-        "MONTHLY,2025-01-31,2025-02-28",
-        "MONTHLY,2024-01-31,2024-02-29",
-        "QUARTERLY,2025-01-15,2025-04-15",
-        "YEARLY,2024-02-29,2025-02-28"
-    })
-    void recurrenceCalculatesNextDate(
-            Recurrence recurrence, LocalDate currentDate, LocalDate expectedDate) {
-        assertThat(recurrence.nextDate(currentDate)).isEqualTo(expectedDate);
-    }
-
-    @ParameterizedTest
-    @CsvSource({
         "MONTHLY,2026-08-15,2026-09-15",
         "QUARTERLY,2026-08-15,2026-11-15",
         "YEARLY,2026-08-15,2027-08-15"

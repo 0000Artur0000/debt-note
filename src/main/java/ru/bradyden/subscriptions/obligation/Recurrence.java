@@ -1,20 +1,27 @@
 package ru.bradyden.subscriptions.obligation;
 
 import java.time.LocalDate;
-import java.time.Period;
+import java.time.YearMonth;
+import java.util.Objects;
 
 public enum Recurrence {
-    MONTHLY(Period.ofMonths(1)),
-    QUARTERLY(Period.ofMonths(3)),
-    YEARLY(Period.ofYears(1));
+    MONTHLY(1),
+    QUARTERLY(3),
+    YEARLY(12);
 
-    private final Period period;
+    private final int intervalMonths;
 
-    Recurrence(Period period) {
-        this.period = period;
+    Recurrence(int intervalMonths) {
+        this.intervalMonths = intervalMonths;
     }
 
-    public LocalDate nextDate(LocalDate currentDate) {
-        return currentDate.plus(period);
+    public LocalDate nextDate(LocalDate currentDate, int billingAnchorDay) {
+        Objects.requireNonNull(currentDate, "currentDate must not be null");
+        if (billingAnchorDay < 1 || billingAnchorDay > 31) {
+            throw new IllegalArgumentException("billingAnchorDay must be between 1 and 31");
+        }
+
+        var targetMonth = YearMonth.from(currentDate).plusMonths(intervalMonths);
+        return targetMonth.atDay(Math.min(billingAnchorDay, targetMonth.lengthOfMonth()));
     }
 }
