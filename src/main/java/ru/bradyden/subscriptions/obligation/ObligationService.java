@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.TreeMap;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.bradyden.subscriptions.obligation.dto.CreateObligationRequest;
@@ -24,24 +25,23 @@ import ru.bradyden.subscriptions.obligation.dto.PayResult;
 import ru.bradyden.subscriptions.obligation.dto.PaymentMapper;
 import ru.bradyden.subscriptions.obligation.dto.UpcomingResult;
 import ru.bradyden.subscriptions.payment.PaymentRepository;
-import ru.bradyden.subscriptions.sse.SseBroadcaster;
 
 @Service
 public class ObligationService {
     private final ObligationRepository obligationRepository;
     private final PaymentRepository paymentRepository;
     private final Clock clock;
-    private final SseBroadcaster sseBroadcaster;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ObligationService(
             ObligationRepository obligationRepository,
             PaymentRepository paymentRepository,
             Clock clock,
-            SseBroadcaster sseBroadcaster) {
+            ApplicationEventPublisher eventPublisher) {
         this.obligationRepository = obligationRepository;
         this.paymentRepository = paymentRepository;
         this.clock = clock;
-        this.sseBroadcaster = sseBroadcaster;
+        this.eventPublisher = eventPublisher;
     }
 
     public CreateObligationResult create(CreateObligationRequest request) {
@@ -133,7 +133,7 @@ public class ObligationService {
             throw new ObligationNotFoundException(id);
         }
         obligationRepository.deleteById(id);
-        sseBroadcaster.broadcast(new ObligationDeleted(id));
+        eventPublisher.publishEvent(new ObligationDeleted(id));
     }
 
     private Obligation find(UUID id) {

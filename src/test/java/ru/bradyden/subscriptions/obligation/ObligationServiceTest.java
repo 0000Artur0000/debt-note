@@ -25,18 +25,18 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 import ru.bradyden.subscriptions.obligation.dto.CreateObligationRequest;
 import ru.bradyden.subscriptions.obligation.dto.UpcomingResult;
 import ru.bradyden.subscriptions.payment.Payment;
 import ru.bradyden.subscriptions.payment.PaymentRepository;
-import ru.bradyden.subscriptions.sse.SseBroadcaster;
 
 @ExtendWith(MockitoExtension.class)
 class ObligationServiceTest {
     @Mock ObligationRepository repository;
     @Mock PaymentRepository paymentRepository;
-    @Mock SseBroadcaster sseBroadcaster;
+    @Mock ApplicationEventPublisher eventPublisher;
 
     private final Clock clock =
             Clock.fixed(Instant.parse("2026-07-09T12:00:00Z"), ZoneId.of("UTC"));
@@ -45,7 +45,7 @@ class ObligationServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ObligationService(repository, paymentRepository, clock, sseBroadcaster);
+        service = new ObligationService(repository, paymentRepository, clock, eventPublisher);
         lenient().when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
@@ -134,6 +134,18 @@ class ObligationServiceTest {
         assertThatThrownBy(() -> service.delete(id))
                 .isInstanceOf(ObligationNotFoundException.class)
                 .hasMessageContaining(id.toString());
+    }
+
+    @Test
+    void deletionPublishesEventAfterSchedulingRepositoryDelete() {
+        var id = UUID.randomUUID();
+        when(repository.existsById(id)).thenReturn(true);
+
+        service.delete(id);
+
+        var ordered = inOrder(repository, eventPublisher);
+        ordered.verify(repository).deleteById(id);
+        ordered.verify(eventPublisher).publishEvent(new ObligationDeleted(id));
     }
 
     @Test
