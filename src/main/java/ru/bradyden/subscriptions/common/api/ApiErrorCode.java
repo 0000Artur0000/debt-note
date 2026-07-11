@@ -3,7 +3,7 @@ package ru.bradyden.subscriptions.common.api;
 import java.net.URI;
 import org.springframework.http.HttpStatus;
 
-enum ApiErrorCode {
+public enum ApiErrorCode {
     MALFORMED_REQUEST(HttpStatus.BAD_REQUEST, "malformed_request", "Некорректный формат запроса"),
     VALIDATION_FAILED(HttpStatus.BAD_REQUEST, "validation_failed", "Ошибка валидации"),
     OBLIGATION_NOT_FOUND(HttpStatus.NOT_FOUND, "obligation_not_found", "Обязательство не найдено"),

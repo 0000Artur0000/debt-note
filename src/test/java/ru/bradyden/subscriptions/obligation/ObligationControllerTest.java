@@ -35,7 +35,6 @@ import ru.bradyden.subscriptions.obligation.dto.ObligationResponse;
 import ru.bradyden.subscriptions.obligation.dto.PayResult;
 import ru.bradyden.subscriptions.obligation.dto.PaymentResponse;
 import ru.bradyden.subscriptions.obligation.dto.UpcomingResult;
-import ru.bradyden.subscriptions.sse.SseBroadcaster;
 
 @WebMvcTest(ObligationController.class)
 class ObligationControllerTest {
@@ -46,7 +45,6 @@ class ObligationControllerTest {
     @Autowired MockMvc mockMvc;
 
     @MockitoBean ObligationService service;
-    @MockitoBean SseBroadcaster sse;
 
     @Test
     void createReturns201AndCurrentJsonContract() throws Exception {

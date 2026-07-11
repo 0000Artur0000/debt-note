@@ -1,0 +1,16 @@
+# Gradle
+.gradle/
+build/
+
+# IDE
+.idea/
+out/
+*.iml
+
+.env
+*.log
+
+# OS metadata
+.DS_Store
+Thumbs.db
+

@@ -19,25 +19,9 @@ import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
-import ru.bradyden.subscriptions.obligation.InvalidObligationStateException;
-import ru.bradyden.subscriptions.obligation.ObligationNotFoundException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
-    @ExceptionHandler(ObligationNotFoundException.class)
-    ResponseEntity<Object> handleObligationNotFound(
-            ObligationNotFoundException exception, WebRequest request) {
-        return response(
-                ApiErrorCode.OBLIGATION_NOT_FOUND, exception.getMessage(), request, List.of());
-    }
-
-    @ExceptionHandler(InvalidObligationStateException.class)
-    ResponseEntity<Object> handleInvalidObligationState(
-            InvalidObligationStateException exception, WebRequest request) {
-        return response(
-                ApiErrorCode.OBLIGATION_NOT_ACTIVE, exception.getMessage(), request, List.of());
-    }
-
     @ExceptionHandler({OptimisticLockingFailureException.class, OptimisticLockException.class})
     ResponseEntity<Object> handleConcurrentModification(
             RuntimeException exception, WebRequest request) {
@@ -128,7 +112,7 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
                 List.of());
     }
 
-    private static ResponseEntity<Object> response(
+    public static ResponseEntity<Object> response(
             ApiErrorCode error,
             String detail,
             WebRequest request,
