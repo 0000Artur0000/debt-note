@@ -20,15 +20,21 @@ public interface ObligationRepository extends JpaRepository<Obligation, UUID> {
             select o from Obligation o
             where (:category is null or o.category = :category)
               and (:status is null or o.status = :status)
-            order by o.nextPaymentDate
+            order by o.nextPaymentDate, o.id
             """)
     List<Obligation> findAllFiltered(
             @Param("category") Category category, @Param("status") Status status);
 
-    @Modifying
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query(
-            "update Obligation o set o.status = :expired, o.updatedAt = :now "
-                    + "where o.status = :active and o.nextPaymentDate < :today "
-                    + "and o.recurrence is null")
+            """
+            update Obligation o
+            set o.status = :expired,
+                o.updatedAt = :now,
+                o.version = o.version + 1
+            where o.status = :active
+              and o.nextPaymentDate < :today
+              and o.recurrence is null
+            """)
     int expireOverdueOneOffs(Status active, Status expired, LocalDate today, Instant now);
 }

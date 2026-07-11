@@ -35,6 +35,25 @@ class ObligationRepositoryTest {
         assertThat(statusOf(overdueSubscription)).isEqualTo(Status.ACTIVE);
         assertThat(statusOf(futureOneOff)).isEqualTo(Status.ACTIVE);
         assertThat(statusOf(cancelledOneOff)).isEqualTo(Status.CANCELLED);
+        assertThat(versionOf(overdueOneOff)).isOne();
+        assertThat(versionOf(overdueSubscription)).isZero();
+        assertThat(versionOf(futureOneOff)).isZero();
+        assertThat(versionOf(cancelledOneOff)).isZero();
+    }
+
+    @Test
+    void lazyExpiryClearsStaleManagedEntitiesBeforeListQuery() {
+        var id = persist(null, TODAY.minusDays(1), Status.ACTIVE);
+        var managed = entityManager.find(Obligation.class, id);
+
+        repository.expireOverdueOneOffs(
+                Status.ACTIVE, Status.EXPIRED, TODAY, Instant.parse("2025-06-15T12:00:00Z"));
+
+        assertThat(entityManager.getEntityManager().contains(managed)).isFalse();
+        assertThat(repository.findAllFiltered(null, Status.EXPIRED))
+                .singleElement()
+                .extracting(Obligation::getId)
+                .isEqualTo(id);
     }
 
     @Test
@@ -115,5 +134,10 @@ class ObligationRepositoryTest {
     private Status statusOf(UUID id) {
         entityManager.clear();
         return entityManager.find(Obligation.class, id).getStatus();
+    }
+
+    private long versionOf(UUID id) {
+        entityManager.clear();
+        return entityManager.find(Obligation.class, id).getVersion();
     }
 }
