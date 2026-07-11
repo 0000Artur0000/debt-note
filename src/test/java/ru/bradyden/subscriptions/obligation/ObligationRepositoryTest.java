@@ -48,6 +48,17 @@ class ObligationRepositoryTest {
     }
 
     @Test
+    void persistenceInitializesOptimisticLockVersion() {
+        var id = persist(Recurrence.MONTHLY, TODAY.plusDays(10), Status.ACTIVE);
+
+        entityManager.clear();
+
+        var obligation = entityManager.find(Obligation.class, id);
+        assertThat(obligation.getVersion()).isZero();
+        assertThat(obligation.getBillingAnchorDay()).isEqualTo((short) 25);
+    }
+
+    @Test
     void filteredListCombinesFiltersAndSortsByPaymentDate() {
         var later =
                 persist(

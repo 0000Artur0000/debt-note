@@ -6,6 +6,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -35,6 +36,9 @@ public class Obligation {
     private Recurrence recurrence;
 
     private LocalDate nextPaymentDate;
+    private Short billingAnchorDay;
+
+    @Version private long version;
 
     @CreationTimestamp private Instant createdAt;
 
@@ -58,6 +62,8 @@ public class Obligation {
         obligation.recurrence = recurrence;
         obligation.nextPaymentDate =
                 Objects.requireNonNull(nextPaymentDate, "nextPaymentDate must not be null");
+        obligation.billingAnchorDay =
+                recurrence == null ? null : (short) nextPaymentDate.getDayOfMonth();
         var currentDate = Objects.requireNonNull(today, "today must not be null");
         obligation.status = nextPaymentDate.isBefore(currentDate) ? Status.EXPIRED : Status.ACTIVE;
         return obligation;
@@ -111,6 +117,14 @@ public class Obligation {
 
     public LocalDate getNextPaymentDate() {
         return nextPaymentDate;
+    }
+
+    public Short getBillingAnchorDay() {
+        return billingAnchorDay;
+    }
+
+    public long getVersion() {
+        return version;
     }
 
     public Instant getCreatedAt() {

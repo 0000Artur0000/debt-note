@@ -20,6 +20,13 @@ class ObligationTest {
     }
 
     @Test
+    void factoryCapturesBillingAnchorOnlyForRecurringObligation() {
+        assertThat(create(Recurrence.MONTHLY, LocalDate.of(2026, 1, 31)).getBillingAnchorDay())
+                .isEqualTo((short) 31);
+        assertThat(create(null, LocalDate.of(2026, 1, 31)).getBillingAnchorDay()).isNull();
+    }
+
+    @Test
     void factoryRejectsInvalidCoreState() {
         assertThatThrownBy(
                         () ->
