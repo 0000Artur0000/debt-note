@@ -11,6 +11,8 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
+import java.util.TreeMap;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -74,11 +76,11 @@ public class ObligationService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
     public UpcomingResult upcoming(int days) {
         var today = LocalDate.now(clock);
         var obligations =
-                obligationRepository.findByNextPaymentDateBetweenOrderByNextPaymentDateAsc(
-                        today, today.plusDays(days));
+                obligationRepository.findUpcoming(Status.ACTIVE, today, today.plusDays(days));
         var obligationResponses = obligations.stream().map(ObligationMapper::toResponse).toList();
 
         return obligations.stream()
@@ -87,7 +89,8 @@ public class ObligationService {
                                 toMap(
                                         Obligation::getCurrency,
                                         Obligation::getAmount,
-                                        BigDecimal::add),
+                                        BigDecimal::add,
+                                        TreeMap::new),
                                 filtering(
                                         obligation ->
                                                 obligation.getCategory() == Category.SUBSCRIPTION
@@ -103,7 +106,7 @@ public class ObligationService {
                                                                 obligation
                                                                         .getRecurrence()
                                                                         .name()
-                                                                        .toLowerCase()),
+                                                                        .toLowerCase(Locale.ROOT)),
                                                 toList())),
                                 (totals, alerts) ->
                                         new UpcomingResult(obligationResponses, totals, alerts)));

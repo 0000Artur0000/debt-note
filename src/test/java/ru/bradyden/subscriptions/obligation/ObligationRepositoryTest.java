@@ -106,6 +106,29 @@ class ObligationRepositoryTest {
         assertThat(result).extracting(Obligation::getId).containsExactly(earlier, later);
     }
 
+    @Test
+    void upcomingIncludesOnlyActiveObligationsInsideInclusiveWindow() {
+        var startsToday =
+                persist(Recurrence.MONTHLY, TODAY, Status.ACTIVE, "Сегодня", Category.SUBSCRIPTION);
+        var endsOnBoundary =
+                persist(null, TODAY.plusDays(7), Status.ACTIVE, "На границе", Category.BILL);
+        persist(
+                Recurrence.MONTHLY,
+                TODAY.plusDays(1),
+                Status.CANCELLED,
+                "Отменено",
+                Category.SUBSCRIPTION);
+        persist(null, TODAY.plusDays(2), Status.EXPIRED, "Истекло", Category.BILL);
+        persist(null, TODAY.minusDays(1), Status.ACTIVE, "До окна", Category.BILL);
+        persist(null, TODAY.plusDays(8), Status.ACTIVE, "После окна", Category.BILL);
+
+        var result = repository.findUpcoming(Status.ACTIVE, TODAY, TODAY.plusDays(7));
+
+        assertThat(result)
+                .extracting(Obligation::getId)
+                .containsExactly(startsToday, endsOnBoundary);
+    }
+
     private UUID persist(Recurrence recurrence, LocalDate date, Status status) {
         return persist(recurrence, date, status, "Кинопоиск " + UUID.randomUUID());
     }
@@ -124,7 +147,7 @@ class ObligationRepositoryTest {
                         category,
                         recurrence,
                         date,
-                        date.minusDays(1));
+                        status == Status.EXPIRED ? date.plusDays(1) : date.minusDays(1));
         if (status == Status.CANCELLED) {
             obligation.cancel();
         }

@@ -1,5 +1,6 @@
 package ru.bradyden.subscriptions.obligation;
 
+import static java.util.Map.entry;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -26,6 +27,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 import ru.bradyden.subscriptions.obligation.dto.CreateObligationRequest;
+import ru.bradyden.subscriptions.obligation.dto.UpcomingResult;
 import ru.bradyden.subscriptions.payment.Payment;
 import ru.bradyden.subscriptions.payment.PaymentRepository;
 import ru.bradyden.subscriptions.sse.SseBroadcaster;
@@ -148,13 +150,57 @@ class ObligationServiceTest {
 
     @Test
     void upcomingWindowCanBeEmpty() {
-        when(repository.findByNextPaymentDateBetweenOrderByNextPaymentDateAsc(any(), any()))
-                .thenReturn(List.of());
+        when(repository.findUpcoming(eq(Status.ACTIVE), any(), any())).thenReturn(List.of());
 
         var result = service.upcoming(7);
 
         assertThat(result.obligations()).isEmpty();
         assertThat(result.totals()).isEmpty();
+        verify(repository)
+                .findUpcoming(Status.ACTIVE, LocalDate.of(2026, 7, 9), LocalDate.of(2026, 7, 16));
+    }
+
+    @Test
+    void upcomingAggregatesCurrenciesAndAlertsDeterministically() {
+        var rubSubscription =
+                activeObligation(
+                        "Подписка",
+                        new BigDecimal("100.00"),
+                        "RUB",
+                        Category.SUBSCRIPTION,
+                        Recurrence.MONTHLY,
+                        LocalDate.of(2026, 7, 10));
+        var usdBill =
+                activeObligation(
+                        "Счёт",
+                        new BigDecimal("20.00"),
+                        "USD",
+                        Category.BILL,
+                        null,
+                        LocalDate.of(2026, 7, 11));
+        var secondRubSubscription =
+                activeObligation(
+                        "Вторая подписка",
+                        new BigDecimal("50.00"),
+                        "RUB",
+                        Category.SUBSCRIPTION,
+                        Recurrence.YEARLY,
+                        LocalDate.of(2026, 7, 12));
+        when(repository.findUpcoming(eq(Status.ACTIVE), any(), any()))
+                .thenReturn(List.of(rubSubscription, usdBill, secondRubSubscription));
+
+        var result = service.upcoming(7);
+
+        assertThat(result.totals())
+                .containsExactly(
+                        entry("RUB", new BigDecimal("150.00")),
+                        entry("USD", new BigDecimal("20.00")));
+        assertThat(result.renewalAlerts())
+                .extracting(UpcomingResult.RenewalAlert::title)
+                .containsExactly("Подписка", "Вторая подписка");
+        assertThat(result.renewalAlerts())
+                .extracting(UpcomingResult.RenewalAlert::recurrence)
+                .containsExactly("monthly", "yearly");
     }
 
     private static CreateObligationRequest request(
@@ -169,12 +215,28 @@ class ObligationServiceTest {
     }
 
     private static Obligation activeObligation(Recurrence recurrence, LocalDate nextPaymentDate) {
+        return activeObligation(
+                "test",
+                new BigDecimal("100"),
+                "RUB",
+                Category.SUBSCRIPTION,
+                recurrence,
+                nextPaymentDate);
+    }
+
+    private static Obligation activeObligation(
+            String title,
+            BigDecimal amount,
+            String currency,
+            Category category,
+            Recurrence recurrence,
+            LocalDate nextPaymentDate) {
         var obligation =
                 Obligation.create(
-                        "test",
-                        new BigDecimal("100"),
-                        "RUB",
-                        Category.SUBSCRIPTION,
+                        title,
+                        amount,
+                        currency,
+                        category,
                         recurrence,
                         nextPaymentDate,
                         nextPaymentDate.minusDays(1));

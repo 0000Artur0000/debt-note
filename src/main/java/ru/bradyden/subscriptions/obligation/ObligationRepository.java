@@ -10,8 +10,17 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface ObligationRepository extends JpaRepository<Obligation, UUID> {
-    List<Obligation> findByNextPaymentDateBetweenOrderByNextPaymentDateAsc(
-            LocalDate startDate, LocalDate endDate);
+    @Query(
+            """
+            select o from Obligation o
+            where o.status = :status
+              and o.nextPaymentDate between :startDate and :endDate
+            order by o.nextPaymentDate, o.id
+            """)
+    List<Obligation> findUpcoming(
+            @Param("status") Status status,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
 
     boolean existsByTitleIgnoreCaseAndStatus(String title, Status status);
 
