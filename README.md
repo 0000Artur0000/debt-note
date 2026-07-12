@@ -1,51 +1,43 @@
 # Smart Subscription Registry
 
-REST API для учёта подписок и регулярных платежей. Стек: Java 21, Spring Boot 3, PostgreSQL 16, Spring Data JPA, Flyway, Gradle, Docker Compose.
+REST API для учёта подписок и регулярных платежей.
+
+Стек: Java 21, Spring Boot, PostgreSQL 16, Spring Data JPA, Flyway, Gradle, Docker Compose.
 
 ## Запуск
 
 ```bash
+cp .env.example .env
 docker compose up --build
 ```
 
-Сервис: <http://localhost:8080>  
-Swagger UI: <http://localhost:8080/docs>
+Flyway применяет миграции автоматически. Сервис доступен на `http://localhost:8080`, Swagger UI — на `http://localhost:8080/docs`.
 
-Миграции Flyway применяются автоматически. Остановка:
+Остановка:
 
 ```bash
 docker compose down
 ```
 
-## Переменные окружения
-
-| Переменная | По умолчанию |
-| --- | --- |
-| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/subscriptions` |
-| `SPRING_DATASOURCE_USERNAME` | `user` |
-| `SPRING_DATASOURCE_PASSWORD` | `pass` |
-
-В Docker Compose адрес БД заменён на `jdbc:postgresql://postgres:5432/subscriptions`.
+Переменные окружения перечислены в `.env.example`.
 
 ## API
 
-| Метод | Путь | Действие |
+| Метод | Путь | Назначение |
 | --- | --- | --- |
 | `POST` | `/obligations` | создать обязательство |
 | `GET` | `/obligations` | получить список; фильтры `category`, `status` |
-| `GET` | `/obligations/upcoming?days=7` | получить ближайшие платежи и суммы по валютам |
+| `GET` | `/obligations/upcoming?days=7` | получить ближайшие платежи |
 | `POST` | `/obligations/{id}/pay` | зафиксировать оплату |
 | `PATCH` | `/obligations/{id}/cancel` | отменить обязательство |
 | `DELETE` | `/obligations/{id}` | удалить обязательство |
 | `GET` | `/obligations/events` | подключиться к SSE |
 
-Значения enum передаются в нижнем регистре. `recurrence`: `monthly`, `quarterly`, `yearly` или `null`.
-
-### Примеры
+## Примеры
 
 ```bash
 curl -X POST http://localhost:8080/obligations \
-  -H "Content-Type: application/json" \
+  -H 'Content-Type: application/json' \
   -d '{
     "title": "Яндекс.Плюс",
     "amount": 399.00,
@@ -55,37 +47,37 @@ curl -X POST http://localhost:8080/obligations \
     "next_payment_date": "2026-08-09"
   }'
 
-curl "http://localhost:8080/obligations?category=subscription&status=active"
-curl "http://localhost:8080/obligations/upcoming?days=7"
-curl -X POST http://localhost:8080/obligations/{id}/pay
-curl -X PATCH http://localhost:8080/obligations/{id}/cancel
-curl -X DELETE http://localhost:8080/obligations/{id}
+curl 'http://localhost:8080/obligations?category=subscription&status=active'
+curl 'http://localhost:8080/obligations/upcoming?days=7'
+OBLIGATION_ID='UUID из ответа POST /obligations'
+curl -X POST "http://localhost:8080/obligations/${OBLIGATION_ID}/pay"
 ```
-
-При активном дубле запись создаётся с полем `warning`. Дата в прошлом создаёт запись со статусом `expired`. Оплата или отмена неактивной записи возвращает `422`, неизвестный UUID — `404`.
 
 ## Бизнес-правила
 
-**Lazy expiry.** Перед `GET /obligations` просроченные разовые записи переводятся в `expired`. Рекуррентные остаются активными: прошедшая дата платежа не означает отмену подписки.
-
-**Перенос даты.** Следующая дата считается от текущего `next_payment_date`, а не от даты оплаты. `LocalDate` обрабатывает конец месяца: `31.01 + 1 месяц = 28.02` или `29.02` в високосный год.
-
-## Архитектура
-
-`Controller -> Service -> Repository -> PostgreSQL`. Бизнес-правила находятся в сервисе, схема БД — в миграции Flyway. Удаление обязательства каскадно удаляет платежи и отправляет SSE-событие `obligation_deleted`.
+- Прошедшая дата при создании даёт статус `expired`, но не ошибку.
+- Дубль активного `title` создаётся с `warning`.
+- Lazy expiry применяется только к разовым обязательствам. Рекуррентная запись остаётся `active`, пока пользователь явно не оплатит или не отменит её.
+- Следующая дата считается от текущего графика, а не от даты оплаты. Исходный день сохраняется: после `31 января → 28 февраля` следующий платёж снова приходится на 31-е, когда месяц это допускает. Аналогично восстанавливается 29 февраля.
+- `upcoming` содержит только активные обязательства; суммы не конвертируются между валютами.
+- Удаление каскадно удаляет payments и после commit отправляет SSE-событие `obligation_deleted`.
 
 ## Тесты
 
 ```bash
-./gradlew test
+bash ./gradlew clean check
+bash scripts/compose-smoke.sh
 ```
 
-Проверяются lazy expiry, дубли, все варианты recurrence, граничные даты, запрет действий для неактивных записей и HTTP-контракт. PostgreSQL для тестов не нужен.
+Unit/integration-тесты используют H2 и не требуют внешней БД. Smoke поднимает PostgreSQL через Compose и проверяет create, duplicate warning, upcoming и pay.
 
 ## Компромиссы
 
-Нет авторизации, аудита изменений, идемпотентности и Testcontainers. SSE-соединения хранятся в памяти процесса.
+- Нет авторизации, пользователей, аудита и идемпотентности запросов.
+- SSE хранит соединения в памяти одного процесса; для нескольких экземпляров потребовался бы broker или outbox.
+- Unit-тесты используют H2; PostgreSQL проверяется отдельным Compose smoke.
+- При большем времени добавил бы Testcontainers, пагинацию и метрики.
 
 ## Мотивация
 
-Интересен backend AI-продукта: API, модель данных, бизнес-правила и интеграции. Готов уделять проекту около 20 часов в неделю, долгосрочно.
+Интересен backend AI-продукта: API, бизнес-правила, данные и эксплуатация. В команде вижу себя Java backend-разработчиком, который отвечает за реализацию и надёжность сервиса. Готов уделять проекту около 20 часов в неделю на долгосрочной основе.
